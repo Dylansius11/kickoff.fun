@@ -42,6 +42,9 @@ Full context lives in docs. Read before building in that area:
 
 Append here the moment a mistake is caught or a preference is stated, so it is never repeated. Format: `- [YYYY-MM-DD] Observation. → Rule going forward.` Newest at top. Both the user and any agent may add entries. Re-read this list before starting work.
 
+- [2026-07-04] VolumeControl v1 expanded on hover only (dead on touch) and animated its width mid-drag (janky). → Primary controls never hide behind hover; touch-first, pointer capture, no layout animation under an active pointer.
+- [2026-07-04] ShareCard v1 hard-locked `aspect-ratio: 4/5` and content overflowed/clipped ("bertabrakan"). → Never fix an aspect ratio on a text-bearing card; let content set height.
+- [2026-07-04] User: the share platform is X. → Share actions open `https://x.com/intent/post?text=` composer, X glyph on the button, not generic navigator.share.
 - [2026-07-04] Helius free tier appears to reject `getProgramAccounts`-style calls on devnet ("error sending request") while getBalance/sendTransaction work. → For `solana program show --buffers` / GPA queries use `-u devnet` (public RPC); use Helius for tx submission.
 - [2026-07-04] Sound: KICK.FUN SFX are SYNTHESIZED in code (Web Audio oscillators, packages/ui/src/sound.ts) — no audio asset files, no licensing. Muted by default; first toggle click unlocks AudioContext. → Never add mp3/wav assets for UI SFX without a reason; extend SCORES table instead.
 - [2026-07-04] Assumed TxLINE had no `validate_stat` ix; official docs + `txodds/tx-on-chain` repo proved it EXISTS on devnet, Merkle-based, roots posted on-chain every 5 min. → Never assert an external API lacks a feature without reading its llms.txt/docs index and repos first; PRD §5 and SMART-CONTRACT §5 now carry the verified facts.

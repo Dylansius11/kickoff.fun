@@ -1,281 +1,415 @@
 "use client";
 
-import { useState } from "react";
-import { Ticket, Trophy, Volume2 } from "lucide-react";
+import { useRef, useState } from "react";
+import Link from "next/link";
+import {
+  motion,
+  useMotionValue,
+  useSpring,
+  useScroll,
+  useTransform,
+  useMotionTemplate,
+  useReducedMotion,
+} from "motion/react";
+import { ArrowRight, ShieldCheck, Users, Radio, Zap } from "lucide-react";
 import {
   Button,
-  Chip,
-  Tag,
   Mono,
   LiveDot,
-  Input,
   Scoreboard,
-  PredictionCard,
-  PotBanner,
-  MatchCard,
   ProofReceipt,
-  LeaderboardTable,
   OracleBubble,
-  RoomCodeChip,
-  SectionHeader,
-  StatTile,
-  Toast,
-  BottomNav,
-  SoundToggle,
+  ShareCard,
+  PixelBurst,
+  BallMascot,
+  VolumeControl,
   useSound,
 } from "@kick/ui";
 
-function Swatch({ name, hex }: { name: string; hex: string }) {
+/* ── the landing page ── web-scale, floodlit, cursor-reactive.
+   "Launch app" drops into the mobile-format product at /app. */
+
+const TICKER = [
+  "GOAL 90+3 · BRA 2–1 ARG",
+  "VERIFIED ON SOLANA",
+  "pixelpele +50 pts",
+  "VAR · HELD · 78:04",
+  "POT 1,000 USDC · CLAIMED",
+  "var_lord calls the corner",
+  "SIGNED BY TXLINE",
+  "MAR 1–0 JPN · FULL TIME",
+];
+
+function Ticker() {
+  const reduce = useReducedMotion();
+  const row = (
+    <div className="flex shrink-0 items-center gap-8 pr-8">
+      {TICKER.map((t, i) => (
+        <span key={i} className="flex items-center gap-8">
+          <Mono className="text-xs uppercase tracking-wider text-text-dim">{t}</Mono>
+          <span className="h-1 w-1 rounded-full bg-pitch" />
+        </span>
+      ))}
+    </div>
+  );
   return (
-    <div className="overflow-hidden rounded-card border-2 border-border-strong">
-      <div className="h-14" style={{ background: hex }} />
-      <div className="bg-surface-2 px-2 py-1.5">
-        <div className="text-xs font-medium text-text">{name}</div>
-        <Mono className="text-[10px] uppercase text-text-muted">{hex}</Mono>
-      </div>
+    <div className="relative overflow-hidden border-y border-border bg-surface/60 py-2.5">
+      <motion.div
+        className="flex w-max"
+        animate={reduce ? undefined : { x: ["0%", "-50%"] }}
+        transition={{ duration: 36, repeat: Infinity, ease: "linear" }}
+      >
+        {row}
+        {row}
+      </motion.div>
     </div>
   );
 }
 
-function Section({ eyebrow, title, children }: { eyebrow: string; title: string; children: React.ReactNode }) {
+function Reveal({ children, delay = 0, className }: { children: React.ReactNode; delay?: number; className?: string }) {
   return (
-    <section className="border-t border-border py-10">
-      <SectionHeader eyebrow={eyebrow} title={title} />
+    <motion.div
+      initial={{ opacity: 0, y: 28 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-80px" }}
+      transition={{ type: "spring", stiffness: 260, damping: 28, delay }}
+      className={className}
+    >
       {children}
-    </section>
+    </motion.div>
   );
 }
 
-export default function Page() {
-  const [homeScore, setHomeScore] = useState(1);
-  const [vard, setVard] = useState(false);
-  const [speaking, setSpeaking] = useState(true);
-  const [nav, setNav] = useState("predict");
-  const goal = homeScore > 1;
+function StepCard({ n, icon: Icon, title, body }: { n: string; icon: typeof Users; title: string; body: string }) {
+  return (
+    <motion.div
+      whileHover={{ y: -6 }}
+      transition={{ type: "spring", stiffness: 400, damping: 24 }}
+      className="rounded-card border-2 border-border-strong bg-surface-2 p-6 shadow-hard"
+    >
+      <div className="flex items-center justify-between">
+        <span className="flex h-10 w-10 items-center justify-center rounded-card border-2 border-pitch-700 bg-pitch/10 text-win">
+          <Icon size={18} />
+        </span>
+        <Mono className="font-display text-xs text-text-muted">{n}</Mono>
+      </div>
+      <h3 className="mt-4 font-display text-xl text-text">{title}</h3>
+      <p className="mt-2 text-sm leading-relaxed text-text-dim">{body}</p>
+    </motion.div>
+  );
+}
+
+export default function Landing() {
+  const reduce = useReducedMotion();
   const { play, roar } = useSound();
 
-  const options = [
-    { name: "BRAZIL", odds: "1.85", picked: true },
-    { name: "DRAW", odds: "3.20" },
-  ];
+  /* cursor floodlight: a spotlight that chases the pointer across the hero */
+  const mx = useMotionValue(0.5);
+  const my = useMotionValue(0.35);
+  const sx = useSpring(mx, { stiffness: 60, damping: 20 });
+  const sy = useSpring(my, { stiffness: 60, damping: 20 });
+  const lx = useTransform(sx, (v) => `${v * 100}%`);
+  const ly = useTransform(sy, (v) => `${v * 100}%`);
+  const floodlight = useMotionTemplate`radial-gradient(42rem 30rem at ${lx} ${ly}, rgba(34,197,94,0.16), transparent 65%)`;
+
+  /* hero scoreboard easter egg */
+  const [score, setScore] = useState(1);
+  const [burst, setBurst] = useState(0);
+  const heroRef = useRef<HTMLDivElement>(null);
+
+  /* parallax on scroll */
+  const { scrollYProgress } = useScroll();
+  const ballY = useTransform(scrollYProgress, [0, 0.25], [0, -60]);
+
+  const onHeroMove = (e: React.PointerEvent) => {
+    const r = heroRef.current?.getBoundingClientRect();
+    if (!r) return;
+    mx.set((e.clientX - r.left) / r.width);
+    my.set((e.clientY - r.top) / r.height);
+  };
+
+  const simulateGoal = () => {
+    setScore((s) => s + 1);
+    setBurst((b) => b + 1);
+    play("goal");
+    roar();
+  };
 
   return (
-    <main className="mx-auto max-w-4xl px-5 pb-28">
+    <main className="relative min-h-dvh overflow-x-clip">
+      {/* pixel grid backdrop */}
+      <div
+        className="pointer-events-none fixed inset-0 -z-20 opacity-[0.35]"
+        style={{
+          backgroundImage:
+            "linear-gradient(rgba(241,245,240,0.035) 1px, transparent 1px), linear-gradient(90deg, rgba(241,245,240,0.035) 1px, transparent 1px)",
+          backgroundSize: "48px 48px",
+        }}
+      />
+
       {/* top bar */}
-      <header className="sticky top-0 z-10 -mx-5 flex items-center justify-between border-b border-border bg-bg/90 px-5 py-3 backdrop-blur">
-        <div className="flex items-center gap-2.5">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.svg" alt="KICK.FUN" className="h-8 w-8" />
-          <span className="font-display text-xl tracking-tight text-text">KICK.FUN</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <Chip tone="pitch">1,240 pts</Chip>
-          <Chip>#3 GLOBAL</Chip>
-          <SoundToggle />
+      <header className="sticky top-0 z-30 border-b border-border bg-bg/85 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-5 py-3">
+          <div className="flex items-center gap-2.5">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/logo.svg" alt="KICK.FUN" className="h-8 w-8" />
+            <span className="font-display text-xl tracking-tight text-text">KICK.FUN</span>
+          </div>
+          <div className="flex items-center gap-2">
+            <VolumeControl />
+            <Link href="/app">
+              <Button size="sm">
+                Launch app <ArrowRight size={14} />
+              </Button>
+            </Link>
+          </div>
         </div>
       </header>
 
-      {/* hero */}
-      <section className="relative py-14">
+      {/* ── HERO ── */}
+      <section
+        ref={heroRef}
+        onPointerMove={reduce ? undefined : onHeroMove}
+        className="relative isolate"
+      >
+        {/* chasing floodlight */}
+        <motion.div className="pointer-events-none absolute inset-0 -z-10" style={{ background: floodlight }} />
+        {/* static stadium wash */}
         <div
-          className="pointer-events-none absolute inset-0 -z-10 opacity-40"
-          style={{ background: "radial-gradient(60% 60% at 30% 20%, rgba(34,197,94,0.20), transparent 70%)" }}
+          className="pointer-events-none absolute inset-0 -z-10"
+          style={{ background: "radial-gradient(90% 60% at 50% -10%, rgba(34,197,94,0.14), transparent 70%)" }}
         />
-        <LiveDot />
-        <h1 className="mt-3 font-display text-5xl leading-[0.95] text-text sm:text-6xl">
-          FLOODLIT
-          <br />
-          ARCADE
-        </h1>
-        <p className="mt-4 max-w-md text-lg text-text-dim">
-          The KICK.FUN component system. Watch the World Cup with your mates, predict live, and the
-          results <span className="text-win">can&apos;t be faked</span>.
-        </p>
-        <div className="mt-6 flex flex-wrap gap-3">
-          <Button>Start a terrace</Button>
-          <Button variant="secondary">Join with code</Button>
+
+        <div className="mx-auto grid max-w-6xl items-center gap-10 px-5 pb-20 pt-16 md:grid-cols-[1.15fr_0.85fr] md:pb-28 md:pt-24">
+          <div>
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ type: "spring", stiffness: 260, damping: 28 }}
+            >
+              <LiveDot label="WORLD CUP 2026 · LIVE" />
+            </motion.div>
+
+            <motion.h1
+              initial={{ opacity: 0, y: 26 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ type: "spring", stiffness: 240, damping: 26, delay: 0.08 }}
+              className="mt-4 font-display text-5xl leading-[0.95] text-text sm:text-7xl"
+            >
+              CALL IT
+              <br />
+              BEFORE
+              <br />
+              THE <span className="text-win">REF</span> DOES
+            </motion.h1>
+
+            <motion.p
+              initial={{ opacity: 0, y: 22 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ type: "spring", stiffness: 240, damping: 26, delay: 0.18 }}
+              className="mt-5 max-w-md text-lg leading-relaxed text-text-dim"
+            >
+              Watch the World Cup with your mates. Predict live, roast the losers, and settle on
+              data <span className="text-win">signed at the source</span>. Nobody rigs this table.
+            </motion.p>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ type: "spring", stiffness: 240, damping: 26, delay: 0.28 }}
+              className="mt-8 flex flex-wrap items-center gap-3"
+            >
+              <Link href="/app">
+                <Button size="lg">
+                  Launch app <ArrowRight size={16} />
+                </Button>
+              </Link>
+              <Link href="/system">
+                <Button variant="secondary" size="lg">
+                  See the system
+                </Button>
+              </Link>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 0.5 }}
+              className="mt-6 flex items-center gap-2"
+            >
+              <ShieldCheck size={14} className="text-win" />
+              <Mono className="text-xs text-text-muted">
+                every result anchored on Solana · powered by TxLINE
+              </Mono>
+            </motion.div>
+          </div>
+
+          {/* interactive ball + scoreboard */}
+          <motion.div style={{ y: reduce ? 0 : ballY }} className="relative flex flex-col items-center gap-6">
+            <PixelBurst burstKey={burst} count={burst ? 26 : 0} />
+            <motion.div
+              initial={{ opacity: 0, scale: 0.7 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ type: "spring", stiffness: 200, damping: 20, delay: 0.2 }}
+            >
+              <BallMascot size={190} track shades dropShades className="drop-shadow-[0_0_50px_rgba(34,197,94,0.3)]" />
+            </motion.div>
+            <motion.div
+              initial={{ opacity: 0, y: 18 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ type: "spring", stiffness: 240, damping: 26, delay: 0.35 }}
+              className="w-full max-w-xs"
+            >
+              <Scoreboard home="BRA" away="ARG" homeScore={score} awayScore={1} clock="78:04" />
+              <button
+                type="button"
+                onClick={simulateGoal}
+                className="mx-auto mt-3 block font-mono text-xs uppercase tracking-wider text-text-muted transition-colors hover:text-win"
+              >
+                [ tap for a goal ]
+              </button>
+            </motion.div>
+          </motion.div>
+        </div>
+
+        <Ticker />
+      </section>
+
+      {/* ── HOW IT WORKS ── */}
+      <section className="mx-auto max-w-6xl px-5 py-20 md:py-28">
+        <Reveal>
+          <div className="font-display text-xs tracking-[0.3em] text-pitch">THE LOOP</div>
+          <h2 className="mt-1 font-display text-3xl text-text sm:text-4xl">Ninety minutes of mouth, receipts at full time</h2>
+        </Reveal>
+        <div className="mt-10 grid gap-4 sm:grid-cols-3">
+          <Reveal delay={0.05}>
+            <StepCard
+              n="01"
+              icon={Users}
+              title="START A TERRACE"
+              body="Spin up a room in one tap, share the code, your mates pile in. No wallets, no forms, straight onto the terrace."
+            />
+          </Reveal>
+          <Reveal delay={0.12}>
+            <StepCard
+              n="02"
+              icon={Zap}
+              title="CALL IT LIVE"
+              body="Next goal, cards, corners: quickfire calls against live odds while the match runs. Streaks stack, the Oracle stirs the pot."
+            />
+          </Reveal>
+          <Reveal delay={0.19}>
+            <StepCard
+              n="03"
+              icon={ShieldCheck}
+              title="SETTLE ON PROOF"
+              body="Results come signed by TxLINE and anchored on Solana. The table settles itself, and nobody argues with a receipt."
+            />
+          </Reveal>
         </div>
       </section>
 
-      <Section eyebrow="01 · COLOR" title="Floodlit palette">
-        <p className="mb-4 max-w-lg text-sm text-text-muted">
-          One hero accent (pitch green) on floodlit near-black. Amber and red are match signals only,
-          never decoration.
-        </p>
-        <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
-          <Swatch name="pitch-500" hex="#22c55e" />
-          <Swatch name="pitch-400" hex="#38d673" />
-          <Swatch name="ink-950" hex="#080b09" />
-          <Swatch name="ink-800" hex="#141c17" />
-          <Swatch name="warn" hex="#f5a524" />
-          <Swatch name="danger" hex="#f4433b" />
+      {/* ── PROOF ── */}
+      <section className="border-t border-border bg-surface/40">
+        <div className="mx-auto grid max-w-6xl items-center gap-10 px-5 py-20 md:grid-cols-2 md:py-28">
+          <Reveal>
+            <div className="font-display text-xs tracking-[0.3em] text-pitch">CAN&apos;T FAKE IT</div>
+            <h2 className="mt-1 font-display text-3xl text-text sm:text-4xl">The ref can be wrong. The data can&apos;t.</h2>
+            <p className="mt-4 max-w-md leading-relaxed text-text-dim">
+              Every score, every card, every VAR call arrives cryptographically signed at the
+              source and lands on-chain. Your bragging rights come with a hash.
+            </p>
+            <div className="mt-6">
+              <OracleBubble
+                persona="THE GAFFER"
+                line="That result? Signed, sealed, anchored. Take it up with the blockchain, son."
+                speaking
+              />
+            </div>
+          </Reveal>
+          <Reveal delay={0.1} className="flex justify-center">
+            <motion.div whileHover={{ rotate: -1.5, scale: 1.02 }} transition={{ type: "spring", stiffness: 300, damping: 20 }}>
+              <ProofReceipt fixture="BRA v ARG" result="2–1 FINAL" anchor="9Exb…cKaA" />
+            </motion.div>
+          </Reveal>
         </div>
-      </Section>
+      </section>
 
-      <Section eyebrow="02 · TYPE" title="Three roles, never blurred">
-        <div className="space-y-4">
-          <div className="rounded-card border-2 border-border-strong bg-surface-2 p-4">
-            <Mono className="mb-1 block text-xs uppercase text-text-muted">Display · Pixelify Sans</Mono>
-            <div className="font-display text-3xl text-text">GOAL 90+3</div>
-          </div>
-          <div className="rounded-card border-2 border-border-strong bg-surface-2 p-4">
-            <Mono className="mb-1 block text-xs uppercase text-text-muted">Data · JetBrains Mono (target: Departure Mono)</Mono>
-            <Mono className="text-2xl font-bold text-text">2–1 · 1.85 · +50 · 9Exb…cKaA</Mono>
-          </div>
-          <div className="rounded-card border-2 border-border-strong bg-surface-2 p-4">
-            <Mono className="mb-1 block text-xs uppercase text-text-muted">Body · Space Grotesk</Mono>
-            <div className="text-base text-text">Call it before the ref does. Nobody rigs the table.</div>
-          </div>
-        </div>
-      </Section>
-
-      <Section eyebrow="03 · CONTROLS" title="Buttons, chips, stats">
-        <div className="space-y-5">
-          <div className="flex flex-wrap items-center gap-3">
-            <Button>Primary</Button>
-            <Button variant="secondary">Secondary</Button>
-            <Button variant="danger">Danger</Button>
-            <Button variant="ghost">Ghost</Button>
-            <Button loading>Loading</Button>
-            <Button size="sm">Small</Button>
-            <Button size="lg">Large</Button>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            <Chip>default</Chip>
-            <Chip tone="pitch">live</Chip>
-            <Chip tone="warn">held</Chip>
-            <Chip tone="danger">card</Chip>
-            <Tag className="text-text-muted">EYEBROW TAG</Tag>
-          </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            <StatTile label="Volume" value="4.0B" delta={{ dir: "up", value: "12%" }} />
-            <StatTile label="Odds BRA" value="1.85" delta={{ dir: "down", value: "0.05" }} />
-            <StatTile label="Streak" value="5" />
-            <StatTile label="Rank" value="#3" delta={{ dir: "up", value: "2" }} />
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <Input placeholder="Enter room code" className="max-w-xs" />
-            <RoomCodeChip code="BRA-9F2" />
-          </div>
-        </div>
-      </Section>
-
-      <Section eyebrow="04 · THE TERRACE" title="Live room (interactive)">
-        <div className="space-y-4">
-          <PotBanner sponsor="Adidas" amount="1,000 USDC" status="funded" />
-          <Scoreboard home="BRA" away="ARG" homeScore={homeScore} awayScore={1} clock="78:04" />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <PredictionCard
-              prompt="NEXT GOAL?"
-              options={options}
-              state={goal ? "win" : "open"}
-              points={50}
-              progress={0.6}
-            />
-            <PredictionCard
-              prompt="CARD THIS HALF?"
-              options={[
-                { name: "YES", odds: "2.10", picked: true },
-                { name: "NO", odds: "1.70" },
-              ]}
-              state={vard ? "review" : "locked"}
-              correctAnswer="No"
-            />
-          </div>
-          <div className="flex flex-wrap gap-3">
-            <Button
-              onClick={() => {
-                const scoring = homeScore === 1;
-                setHomeScore((n) => (n === 1 ? 2 : 1));
-                if (scoring) {
-                  play("goal");
-                  roar();
-                } else {
-                  play("tap");
-                }
-              }}
+      {/* ── THE FLEX ── */}
+      <section className="mx-auto max-w-6xl px-5 py-20 md:py-28">
+        <div className="grid items-center gap-10 md:grid-cols-2">
+          <Reveal className="order-2 flex justify-center md:order-1">
+            <motion.div
+              initial={{ rotate: -3 }}
+              whileHover={{ rotate: 0, scale: 1.03 }}
+              transition={{ type: "spring", stiffness: 260, damping: 20 }}
             >
-              {goal ? "Reset" : "Simulate goal"}
-            </Button>
-            <Button
-              variant="secondary"
-              onClick={() => {
-                setVard((v) => !v);
-                play(vard ? "tap" : "var");
-              }}
-            >
-              {vard ? "Clear VAR" : "Trigger VAR"}
-            </Button>
-          </div>
-          <p className="text-sm text-text-muted">
-            Goal settles the card green and verified, with a chiptune fanfare and crowd roar if sound
-            is on. VAR holds it amber with a scanline and a two-tone alert.
-          </p>
+              <ShareCard
+                data={{
+                  fixture: "BRA v ARG",
+                  score: "2–1",
+                  handle: "@pixelpele",
+                  rank: 1,
+                  total: 8,
+                  points: 1840,
+                  anchor: "9Exb…cKaA",
+                  potLabel: "1,000 USDC · Adidas",
+                }}
+              />
+            </motion.div>
+          </Reveal>
+          <Reveal delay={0.1} className="order-1 md:order-2">
+            <div className="font-display text-xs tracking-[0.3em] text-pitch">THE FLEX</div>
+            <h2 className="mt-1 font-display text-3xl text-text sm:text-4xl">Full time hits different when it&apos;s provable</h2>
+            <p className="mt-4 max-w-md leading-relaxed text-text-dim">
+              Win the terrace, the ball puts its shades on, and your receipt goes straight to X.
+              Sponsored pots pay the champion in USDC, on-chain, one tap.
+            </p>
+            <div className="mt-6 flex items-center gap-2">
+              <Radio size={14} className="text-win" />
+              <Mono className="text-xs text-text-muted">live money path already running on devnet</Mono>
+            </div>
+          </Reveal>
         </div>
-      </Section>
+      </section>
 
-      <Section eyebrow="05 · THE ORACLE" title="Your pundit, out loud">
-        <div className="space-y-3">
-          <OracleBubble
-            persona="THE GAFFER"
-            line="That result? Verified, signed by TxLINE, locked on-chain. Nobody's rigging this one."
-            speaking={speaking}
-          />
-          <Button variant="secondary" size="sm" onClick={() => setSpeaking((s) => !s)}>
-            {speaking ? "Stop speaking" : "Speak"}
-          </Button>
-        </div>
-      </Section>
-
-      <Section eyebrow="06 · PROOF" title="A hash you can hold">
-        <ProofReceipt fixture="BRA v ARG" result="2–1 FINAL" anchor="9Exb…cKaA" />
-      </Section>
-
-      <Section eyebrow="07 · THE TABLE" title="Live leaderboard">
-        <LeaderboardTable
-          rows={[
-            { rank: 1, name: "pixelpele", points: 1840, streak: 5 },
-            { rank: 2, name: "var_lord", points: 1620 },
-            { rank: 3, name: "you", points: 1240, streak: 2, you: true },
-            { rank: 4, name: "maxi", points: 980 },
-          ]}
+      {/* ── FINAL CTA ── */}
+      <section className="relative overflow-hidden border-t border-border">
+        <div
+          className="pointer-events-none absolute inset-0 -z-10"
+          style={{ background: "radial-gradient(70% 90% at 50% 110%, rgba(34,197,94,0.18), transparent 70%)" }}
         />
-      </Section>
-
-      <Section eyebrow="08 · LOBBY" title="Today's fixtures">
-        <div className="space-y-2">
-          <MatchCard home="BRA" away="ARG" kickoff="20:00" status="live" />
-          <MatchCard home="FRA" away="ESP" kickoff="17:00" status="upcoming" />
-          <MatchCard home="ENG" away="GER" kickoff="14:00" status="final" />
+        <div className="mx-auto flex max-w-6xl flex-col items-center px-5 py-24 text-center md:py-32">
+          <Reveal>
+            <BallMascot size={72} shades />
+          </Reveal>
+          <Reveal delay={0.08}>
+            <h2 className="mt-6 font-display text-4xl leading-[0.95] text-text sm:text-6xl">
+              THE TERRACE
+              <br />
+              IS <span className="text-win">OPEN</span>
+            </h2>
+          </Reveal>
+          <Reveal delay={0.16}>
+            <div className="mt-8">
+              <Link href="/app">
+                <Button size="lg">
+                  Launch app <ArrowRight size={16} />
+                </Button>
+              </Link>
+            </div>
+          </Reveal>
         </div>
-      </Section>
+      </section>
 
-      <Section eyebrow="09 · SYSTEM" title="Feedback">
-        <div className="max-w-md space-y-2">
-          <Toast tone="win">You called it. +50 points, top of the terrace.</Toast>
-          <Toast tone="warn">VAR check. Points held until the call is final.</Toast>
-          <Toast tone="danger">Missed that one. The table never lies.</Toast>
+      <footer className="border-t border-border py-8">
+        <div className="mx-auto flex max-w-6xl flex-col items-center gap-2 px-5 text-center">
+          <Mono className="text-xs text-text-muted">
+            KICK.FUN · built for the TxODDS x Solana hackathon · results signed by TxLINE, anchored on Solana
+          </Mono>
+          <Mono className="text-[10px] text-text-muted">points are for glory, not for cash</Mono>
         </div>
-      </Section>
-
-      <footer className="border-t border-border py-8 text-center">
-        <Mono className="text-xs text-text-muted">
-          KICK.FUN · Floodlit Arcade · floodlit pitch, pixel roar, receipt you can hold
-        </Mono>
       </footer>
-
-      {/* fixed mobile nav preview */}
-      <div className="fixed inset-x-0 bottom-0 mx-auto max-w-4xl">
-        <BottomNav
-          active={nav}
-          onSelect={setNav}
-          items={[
-            { key: "predict", label: "PREDICT", icon: Ticket },
-            { key: "table", label: "TABLE", icon: Trophy },
-            { key: "oracle", label: "ORACLE", icon: Volume2 },
-          ]}
-        />
-      </div>
     </main>
   );
 }

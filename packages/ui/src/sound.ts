@@ -55,25 +55,74 @@ const SCORES: Record<SfxName, Note[]> = {
   ],
 };
 
+const STORE_KEY = "kick.volume";
+/** Master gain at full slider. Kept below 1 so summed oscillators never clip. */
+const MAX_GAIN = 0.9;
+const DEFAULT_VOLUME = 0.6;
+
 class SoundEngine {
   private ctx: AudioContext | null = null;
   private master: GainNode | null = null;
   private crowd: { src: AudioBufferSourceNode; gain: GainNode } | null = null;
-  private _enabled = false;
+  private _volume = 0; // 0..1, source of truth. 0 == muted.
+  private _lastNonZero = DEFAULT_VOLUME; // restore point for mute -> unmute
+  private listeners = new Set<() => void>();
 
-  get enabled() {
-    return this._enabled;
+  constructor() {
+    if (typeof window !== "undefined") {
+      const saved = Number(window.localStorage?.getItem(STORE_KEY));
+      if (Number.isFinite(saved) && saved > 0) {
+        this._volume = Math.min(1, saved);
+        this._lastNonZero = this._volume;
+      }
+    }
   }
 
-  /** Must be called from a user gesture the first time (autoplay policy). */
-  setEnabled(on: boolean) {
-    this._enabled = on;
-    if (on) {
+  get volume() {
+    return this._volume;
+  }
+  get enabled() {
+    return this._volume > 0;
+  }
+
+  /** React reactivity: subscribe returns an unsubscribe fn (useSyncExternalStore). */
+  subscribe = (cb: () => void) => {
+    this.listeners.add(cb);
+    return () => this.listeners.delete(cb);
+  };
+  private emit() {
+    for (const cb of this.listeners) cb();
+  }
+
+  /** Set master volume 0..1. Must first be called from a user gesture (autoplay
+      policy) so the AudioContext can unlock. Persists across reloads. */
+  setVolume(v: number) {
+    const vol = Math.max(0, Math.min(1, v));
+    this._volume = vol;
+    if (vol > 0) this._lastNonZero = vol;
+    if (typeof window !== "undefined") window.localStorage?.setItem(STORE_KEY, String(vol));
+
+    if (vol > 0) {
       this.ensureCtx();
       void this.ctx?.resume();
-    } else {
-      this.stopCrowd();
+      if (this.master && this.ctx) {
+        const now = this.ctx.currentTime;
+        this.master.gain.cancelScheduledValues(now);
+        this.master.gain.setValueAtTime(Math.max(0.0001, this.master.gain.value), now);
+        this.master.gain.linearRampToValueAtTime(vol * MAX_GAIN, now + 0.08);
+      }
+    } else if (this.master && this.ctx) {
+      const now = this.ctx.currentTime;
+      this.master.gain.cancelScheduledValues(now);
+      this.master.gain.linearRampToValueAtTime(0.0001, now + 0.08);
     }
+    this.emit();
+  }
+
+  /** Backward-compat on/off. Off remembers the last level for restore. */
+  setEnabled(on: boolean) {
+    this.setVolume(on ? this._lastNonZero : 0);
+    if (!on) this.stopCrowd();
   }
 
   private ensureCtx() {
@@ -82,12 +131,12 @@ class SoundEngine {
     if (!AC) return;
     this.ctx = new AC();
     this.master = this.ctx.createGain();
-    this.master.gain.value = 0.6;
+    this.master.gain.value = this._volume * MAX_GAIN;
     this.master.connect(this.ctx.destination);
   }
 
   play(name: SfxName) {
-    if (!this._enabled) return;
+    if (!this.enabled) return;
     this.ensureCtx();
     const ctx = this.ctx;
     const master = this.master;
@@ -111,7 +160,7 @@ class SoundEngine {
 
   /** Low filtered-noise loop that reads as distant stadium murmur. */
   startCrowd(level = 0.05) {
-    if (!this._enabled) return;
+    if (!this.enabled) return;
     this.ensureCtx();
     const ctx = this.ctx;
     const master = this.master;
@@ -141,7 +190,7 @@ class SoundEngine {
   /** Swell the crowd briefly (goal roar). */
   roar(peak = 0.22, ms = 1800) {
     const ctx = this.ctx;
-    if (!ctx || !this.crowd || !this._enabled) return;
+    if (!ctx || !this.crowd || !this.enabled) return;
     const g = this.crowd.gain.gain;
     const base = 0.05;
     const now = ctx.currentTime;
