@@ -1,0 +1,23 @@
+[package]
+name = "kick-settlement"
+version = "0.1.0"
+description = "KICK.FUN settlement program: TxLINE proof-gated room settlement, results anchoring, sponsor pot custody"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "kick_settlement"
+
+[features]
+default = []
+cpi = ["no-entrypoint"]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+idl-build = ["anchor-lang/idl-build", "anchor-spl/idl-build"]
+
+[dependencies]
+anchor-lang = "1.0.2"
+anchor-spl = "1.0.2"
+solana-sha256-hasher = { version = "3", features = ["sha2"] }
+solana-keccak-hasher = { version = "3", features = ["sha3"] }

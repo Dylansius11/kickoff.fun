@@ -42,6 +42,9 @@ Full context lives in docs. Read before building in that area:
 
 Append here the moment a mistake is caught or a preference is stated, so it is never repeated. Format: `- [YYYY-MM-DD] Observation. → Rule going forward.` Newest at top. Both the user and any agent may add entries. Re-read this list before starting work.
 
+- [2026-07-04] Assumed TxLINE had no `validate_stat` ix; official docs + `txodds/tx-on-chain` repo proved it EXISTS on devnet, Merkle-based, roots posted on-chain every 5 min. → Never assert an external API lacks a feature without reading its llms.txt/docs index and repos first; PRD §5 and SMART-CONTRACT §5 now carry the verified facts.
+- [2026-07-04] Anchor 1.x breaking changes bit us: `CpiContext::new(program_id: Pubkey, ...)` (not AccountInfo) and no `anchor_lang::solana_program::{hash,keccak}` re-export (use `solana-sha256-hasher`/`solana-keccak-hasher` crates, host builds need `sha2`/`sha3` features). → Check the installed crate source in `~/.cargo/registry` when Anchor APIs mismatch training data.
+- [2026-07-04] Custom `.claude/agents/*.md` files are not picked up mid-session (registry loads at start). → After creating an agent file, either restart the session or inline its prompt into a general-purpose agent call.
 - [2026-07-04] User: UI shown to users must have zero em-dashes. → Never emit `—` in any user-facing string; use `,` `.` `:` or `·`. En-dash only for scores like `2–1`.
 - [2026-07-04] User: remove emojis from the Simulate/VAR buttons; dislikes emoji in the interface. → No emojis in product UI; use Lucide icons or pixel glyphs.
 - [2026-07-04] User hates mediocrity and generic output. → Hold every deliverable to the anti-slop bar; distinctive and considered, never the safe middle.

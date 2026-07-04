@@ -106,27 +106,24 @@ graph LR
 
 ---
 
-## 5. Proof verification — the fallback ladder (decide Day 2)
+## 5. Proof verification — the rung system (UPDATED July 4 2026 after reading official TxLINE docs + tx-on-chain repo; Q1 RESOLVED)
 
-Everything hinges on TxLINE's proof format (open question Q1, `INTEGRATIONS.md`). Build the rung that matches; all three keep settlement gated on real data.
+**Verified facts** (from `txline.txodds.com/documentation/examples/onchain-validation`, `documentation/programs/devnet`, `github.com/txodds/tx-on-chain`):
+- TxLINE (txoracle) **posts Merkle roots on-chain**: scores every 5 min (`epoch_day` + hour/minute-aligned PDAs; `epochDay = floor(unixMs / 86400000)`), fixtures daily, resolution roots per interval.
+- Proof node format: `{ hash: [u8;32], is_right_sibling: bool }`. REST payload: `summary {fixtureId, updateStats, eventStatsSubTreeRoot}` + `subTreeProof[]` + `mainTreeProof[]` + per-stat `{statToProve, eventStatRoot, statProof[]}`.
+- **`validate_stat` EXISTS on devnet.** Our v1.2 assumption that it did not was wrong (lesson logged in CLAUDE.md). It checks a stat predicate `{threshold, comparison}` against on-chain roots; their docs run it via `.view()` at ~1.4M CU.
+- **Hash algorithm undocumented** — confirm against a captured real proof before enabling in-program Merkle mode.
+- Ed25519-attestor design (old Rung 2) is obsolete: the system is Merkle-based end to end.
 
-### Rung 1 — Merkle proof (preferred, fully in-program)
-TxLINE returns a leaf (the result) + Merkle path to a signed root.
-- In-program: recompute the root with `solana_program::keccak::hashv` (or sha256) over the path, assert it equals the expected root.
-- Cheap, deterministic, no extra instruction. **Most trustless rung.**
+**Implemented in code: `Config.verify_mode`, rotatable via `set_verify_mode` (no redeploy).**
 
-### Rung 2 — Ed25519-signed payload (native program + introspection)
-TxLINE signs the result payload with a known key (`Config.txline_attestor`).
-- Solana programs can't call ed25519 verify directly, so the **client includes an `Ed25519Program` instruction** in the same transaction, and `settle_room` uses **instruction introspection** (`sysvar::instructions` / `load_instruction_at_checked`) to assert that instruction verified `(txline_attestor, payload, signature)` and that `payload` matches the fixture result being settled.
-- Well-known pattern; budget +1 day for the introspection wiring.
+| Mode | What gates settlement | Status |
+| --- | --- | --- |
+| `HashAnchor` (rung C) | Ingest verifies off-chain; sha256 digest of the raw proof anchored in `Room.proof_digest`. Tamper-evident receipt. | **Active default, shipped.** |
+| `MerkleKeccak` / `MerkleSha256` (rung B) | In-program path walk (`merkle.rs`, both algos, unit-tested, 64-node cap); `expected_root` echoed in `RoomSettled` so anyone can compare with txoracle's on-chain root for the window. Flip to the confirmed algo after testing a real proof. | **Shipped behind enum.** |
+| `CpiValidateStat` (rung A) | CPI into txoracle `validate_stat` (the integration the judges' brief explicitly praises). Blocker: ~1.4M CU near the tx ceiling — needs headroom testing with real txoracle accounts. | **Reserved; returns `VerifyModeNotEnabled`.** |
 
-### Rung 3 — Hash-anchor fallback (protects the demo)
-If in-program verification fights the deadline:
-- Verify the TxLINE signature **off-chain** in the ingest worker (trusted service).
-- `settle_room` anchors the **hash of the signed proof** on-chain as a tamper-evident receipt (`results_hash` includes/commits to the proof digest).
-- Still on-chain, still "provably real" to a fan (the proof reference resolves to TxLINE's signed data), just with an off-chain verification step. **Never let purism cost the demo** (PRD §6.3).
-
-**Ship order:** implement rung 3 first (guarantees a working end-to-end path), then upgrade to rung 1 or 2 as the format allows. The client and account layout are identical across rungs — only the verify body changes.
+All modes require `proof.fixture_id == room.fixture_id` and store `proof_digest`. Ship order honored: C runs end-to-end today; B sits in the binary awaiting algo confirmation; A lands after CU testing.
 
 ---
 
@@ -136,12 +133,14 @@ Be precise about what is trustless vs attested — technical judges (TxODDS) wil
 
 | Claim | Reality |
 | --- | --- |
-| "The match result can't be faked." | **True** at rung 1/2: the outcome is cryptographically verified from TxLINE's signed data on-chain. Rung 3: verified off-chain, hash anchored. |
-| "The results hash is anchored on-chain." | **True.** Anyone can compare the off-chain leaderboard to the anchored hash. |
-| "The winner is trustlessly computed on-chain." | **Not fully in MVP.** The leaderboard (points from predictions) is computed **off-chain** by the service; `settle_room` names the winner. The program proves the _match outcome_ and _anchors_ the final standings hash, but does not recompute every prediction on-chain. |
-| Path to full trustlessness (v2) | Post each prediction commitment on-chain (commit-reveal), or prove the leaderboard with a succinct proof, so `winner` is derivable on-chain from anchored predictions + verified results. Stated as future work. |
+| "The results hash + proof digest are anchored on-chain." | **True.** Anyone can compare the off-chain leaderboard and the raw TxLINE proof against the anchored hashes. |
+| "Merkle mode verifies the proof on-chain." | **Path-consistent, not yet root-authoritative** (internal audit HIGH-1, Jul 4). The program verifies leaf→root consistency in-program, and echoes `expected_root` in the event for public comparison against txoracle's published root — but does not yet read txoracle's root account itself, so a malicious *authority* could self-consistently fake it. External attackers cannot (settlement is authority-gated). Root-registry check against txoracle's on-chain root PDAs = the planned upgrade once their account layout is ingested from the IDL. |
+| "The winner is trustlessly computed on-chain." | **No, by design in MVP.** The leaderboard is computed off-chain; `settle_room` names the winner. The program anchors the standings hash but does not recompute predictions on-chain. |
+| Path to full trustlessness (v2) | (a) Compare `expected_root` to txoracle's on-chain root PDA; (b) commit predictions on-chain (commit-reveal) so `winner` is derivable from anchored picks + verified results. |
 
-This is the honest, defensible line: **the data is provably real; the standings are anchored + auditable; full on-chain recomputation of the leaderboard is a deliberate v2.** For a **non-cashable points** game with a **sponsor-funded** pot, service attestation of the winner is an acceptable, clearly-disclosed trust assumption — no player funds are ever at risk.
+**Internal audit (Jul 4, adversarial agent):** external vault theft, double-claim, re-settle, mint/destination substitution, seed collision, reentrancy, close-with-funds — all attempted, none possible. Fixes shipped from the findings: `init_config` now gated on the **program upgrade authority** (front-run guard), **cancel_room + refund_pot** added so sponsor funds can never be stranded on a void match (single sponsor per room), proof path bounded in every mode. Remaining known gap = the root-authority note above, disclosed rather than hidden.
+
+The honest, defensible line: **the data trail is anchored and auditable end-to-end; player funds are never at risk (players never deposit); the remaining trust in the service authority is explicitly disclosed and has a stated upgrade path.**
 
 ---
 

@@ -1,0 +1,25 @@
+[toolchain]
+anchor_version = "1.0.2"
+
+[features]
+resolution = true
+skip-lint = false
+
+[programs.devnet]
+kick_settlement = "6dcNE27gXWVbnuVuGRgZVoRswKEJny1CemJtb8jxHhX2"
+
+[programs.localnet]
+kick_settlement = "6dcNE27gXWVbnuVuGRgZVoRswKEJny1CemJtb8jxHhX2"
+
+[registry]
+url = "https://api.apr.dev"
+
+[provider]
+cluster = "devnet"
+wallet = "~/.config/solana/id.json"
+
+[scripts]
+test = "pnpm dlx tsx --test tests/kick-settlement.test.ts"
+
+[workspace]
+members = ["programs/kick-settlement"]
