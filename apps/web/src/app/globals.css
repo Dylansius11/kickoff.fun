@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* scan the shared UI package so its Tailwind classes are generated */
+@source "../../../../packages/ui/src";
+
 /* ── KICK.FUN · Floodlit Arcade tokens (mirror of /brand.md) ── */
 :root {
   color-scheme: dark;
@@ -82,6 +85,10 @@ body {
 .animate-live { animation: live-pulse 1.6s ease-in-out infinite; }
 .animate-var { animation: amber-breathe 1.8s ease-in-out infinite; }
 
+/* Oracle speaking waveform */
+@keyframes wave { 0%, 100% { height: 4px; } 50% { height: 14px; } }
+.wave-bar { height: 4px; animation: wave 0.7s ease-in-out infinite; }
+
 @media (prefers-reduced-motion: reduce) {
-  .animate-live, .animate-var { animation: none; }
+  .animate-live, .animate-var, .wave-bar { animation: none; }
 }

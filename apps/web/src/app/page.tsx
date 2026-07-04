@@ -1,71 +1,27 @@
 "use client";
 
 import { useState } from "react";
-import { cn } from "@/lib/utils";
-
-/* ── primitives (preview only — will move to packages/ui) ── */
-
-function LiveDot() {
-  return (
-    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-win">
-      <span className="animate-live inline-block h-2 w-2 rounded-full bg-pitch" />
-      LIVE
-    </span>
-  );
-}
-
-function Chip({ children, tone = "default" }: { children: React.ReactNode; tone?: "default" | "pitch" }) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-mono text-xs tabular",
-        tone === "pitch"
-          ? "border-pitch-700 bg-pitch/10 text-win"
-          : "border-border-strong bg-surface-2 text-text-dim",
-      )}
-    >
-      {children}
-    </span>
-  );
-}
-
-type BtnVariant = "primary" | "secondary" | "ghost";
-function PixelButton({
-  children,
-  variant = "primary",
-  className,
-  ...props
-}: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: BtnVariant }) {
-  return (
-    <button
-      className={cn(
-        "inline-flex min-h-11 items-center justify-center rounded-card px-4 py-2 text-sm font-bold transition-[transform,box-shadow] duration-100",
-        "active:translate-x-[2px] active:translate-y-[2px]",
-        variant === "primary" &&
-          "border-2 border-pitch-700 bg-pitch text-on-primary shadow-hard-pitch active:shadow-press hover:brightness-110",
-        variant === "secondary" &&
-          "border-2 border-border-strong bg-transparent text-text shadow-hard active:shadow-press hover:border-chalk",
-        variant === "ghost" && "text-text-dim hover:text-text",
-        className,
-      )}
-      {...props}
-    >
-      {children}
-    </button>
-  );
-}
-
-function Section({ eyebrow, title, children }: { eyebrow: string; title: string; children: React.ReactNode }) {
-  return (
-    <section className="border-t border-border py-10">
-      <div className="mb-6">
-        <div className="font-display text-xs tracking-widest text-pitch">{eyebrow}</div>
-        <h2 className="font-display text-2xl text-text">{title}</h2>
-      </div>
-      {children}
-    </section>
-  );
-}
+import { Ticket, Trophy, Volume2 } from "lucide-react";
+import {
+  Button,
+  Chip,
+  Tag,
+  Mono,
+  LiveDot,
+  Input,
+  Scoreboard,
+  PredictionCard,
+  PotBanner,
+  MatchCard,
+  ProofReceipt,
+  LeaderboardTable,
+  OracleBubble,
+  RoomCodeChip,
+  SectionHeader,
+  StatTile,
+  Toast,
+  BottomNav,
+} from "@kick/ui";
 
 function Swatch({ name, hex }: { name: string; hex: string }) {
   return (
@@ -73,129 +29,35 @@ function Swatch({ name, hex }: { name: string; hex: string }) {
       <div className="h-14" style={{ background: hex }} />
       <div className="bg-surface-2 px-2 py-1.5">
         <div className="text-xs font-medium text-text">{name}</div>
-        <div className="font-mono text-[10px] uppercase tabular text-text-muted">{hex}</div>
+        <Mono className="text-[10px] uppercase text-text-muted">{hex}</Mono>
       </div>
     </div>
   );
 }
 
-function Scoreboard({ hs, as: away }: { hs: number; as: number }) {
+function Section({ eyebrow, title, children }: { eyebrow: string; title: string; children: React.ReactNode }) {
   return (
-    <div className="flex items-center justify-between rounded-card border-2 border-border-strong bg-surface-2 px-4 py-3 shadow-hard">
-      <span className="font-display text-lg text-text">BRA</span>
-      <div className="flex items-center gap-3">
-        <span className="font-mono text-3xl font-bold tabular text-text">{hs}</span>
-        <span className="text-text-muted">–</span>
-        <span className="font-mono text-3xl font-bold tabular text-text">{away}</span>
-      </div>
-      <div className="flex flex-col items-end gap-0.5">
-        <span className="font-display text-lg text-text">ARG</span>
-        <span className="font-mono text-xs tabular text-warn">78:04</span>
-      </div>
-    </div>
+    <section className="border-t border-border py-10">
+      <SectionHeader eyebrow={eyebrow} title={title} />
+      {children}
+    </section>
   );
 }
-
-type CardState = "open" | "locked" | "review" | "win" | "miss";
-function PredictionCard({ state, points }: { state: CardState; points: number }) {
-  const meta: Record<CardState, { badge: string; klass: string; badgeKlass: string }> = {
-    open: { badge: "OPEN", klass: "border-border-strong", badgeKlass: "text-text-dim" },
-    locked: { badge: "LOCKED", klass: "border-warn/60", badgeKlass: "text-warn" },
-    review: { badge: "VAR — HELD", klass: "border-warn animate-var scanlines", badgeKlass: "text-warn" },
-    win: { badge: "VERIFIED ✓", klass: "border-pitch shadow-glow", badgeKlass: "text-win" },
-    miss: { badge: "MISSED", klass: "border-danger/60 opacity-70", badgeKlass: "text-danger" },
-  };
-  const m = meta[state];
-  return (
-    <div className={cn("rounded-card border-2 bg-surface-2 p-4 shadow-hard transition-all", m.klass)}>
-      <div className="mb-3 flex items-center justify-between">
-        <span className="font-display text-sm text-text">NEXT GOAL?</span>
-        <span className={cn("font-mono text-[10px] font-bold tabular", m.badgeKlass)}>{m.badge}</span>
-      </div>
-      <div className="space-y-2">
-        {[
-          { name: "BRAZIL", odds: "1.85", picked: true },
-          { name: "DRAW", odds: "3.20", picked: false },
-        ].map((o) => (
-          <div
-            key={o.name}
-            className={cn(
-              "flex items-center justify-between rounded-card border px-3 py-2 text-sm",
-              o.picked ? "border-pitch-700 bg-pitch/10" : "border-border bg-surface",
-            )}
-          >
-            <span className="flex items-center gap-2 font-medium text-text">
-              {o.picked && <span className="text-win">◉</span>}
-              {o.name}
-            </span>
-            <span className="font-mono tabular text-text-dim">{o.odds}</span>
-          </div>
-        ))}
-      </div>
-      {(state === "win" || state === "miss") && (
-        <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
-          <span className="text-xs text-text-muted">
-            {state === "win" ? "Signed by TxLINE · on-chain" : "Correct: Draw"}
-          </span>
-          <span className={cn("font-mono text-sm font-bold tabular", state === "win" ? "text-win" : "text-text-muted")}>
-            {state === "win" ? `+${points}` : "—"}
-          </span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ProofReceipt() {
-  return (
-    <div className="max-w-xs rounded-card border-2 border-dashed border-border-strong bg-surface px-4 py-4 font-mono text-xs tabular">
-      <div className="mb-2 text-center font-display text-sm tracking-wider text-pitch">· KICK.FUN RECEIPT ·</div>
-      <div className="space-y-1 text-text-dim">
-        <div className="flex justify-between"><span>FIXTURE</span><span className="text-text">BRA–ARG</span></div>
-        <div className="flex justify-between"><span>RESULT</span><span className="text-text">2–1 FINAL</span></div>
-        <div className="flex justify-between"><span>SOURCE</span><span className="text-win">TxLINE ✓</span></div>
-        <div className="flex justify-between"><span>ANCHOR</span><span className="text-text">9Exb…cKaA</span></div>
-      </div>
-      <div className="mt-3 border-t border-dashed border-border pt-2 text-center text-[10px] text-text-muted">
-        signed at source — nobody can fake this
-      </div>
-    </div>
-  );
-}
-
-function LeaderRow({ rank, name, pts, streak, you }: { rank: number; name: string; pts: number; streak?: number; you?: boolean }) {
-  return (
-    <div
-      className={cn(
-        "flex items-center gap-3 rounded-card border-2 px-3 py-2.5",
-        you ? "border-pitch bg-pitch/10" : "border-border-strong bg-surface-2",
-      )}
-    >
-      <span className="w-6 font-mono text-sm font-bold tabular text-text-muted">{rank}</span>
-      <div className="h-7 w-7 rounded-full border border-border-strong bg-raised" />
-      <span className="flex-1 font-medium text-text">
-        {name}
-        {you && <span className="ml-1 text-xs text-win">(you)</span>}
-      </span>
-      {streak ? (
-        <span className="inline-flex items-center gap-1 rounded-full border border-warn/50 bg-warn/10 px-2 py-0.5 font-mono text-xs tabular text-warn">
-          🔥 {streak}
-        </span>
-      ) : null}
-      <span className="w-14 text-right font-mono text-sm font-bold tabular text-text">{pts}</span>
-    </div>
-  );
-}
-
-/* ── the showcase ── */
 
 export default function Page() {
-  const [hs, setHs] = useState(1);
-  const [carded, setCarded] = useState(false);
-  const bumped = hs > 1;
+  const [homeScore, setHomeScore] = useState(1);
+  const [vard, setVard] = useState(false);
+  const [speaking, setSpeaking] = useState(true);
+  const [nav, setNav] = useState("predict");
+  const goal = homeScore > 1;
+
+  const options = [
+    { name: "BRAZIL", odds: "1.85", picked: true },
+    { name: "DRAW", odds: "3.20" },
+  ];
 
   return (
-    <main className="mx-auto max-w-4xl px-5 pb-24">
+    <main className="mx-auto max-w-4xl px-5 pb-28">
       {/* top bar */}
       <header className="sticky top-0 z-10 -mx-5 flex items-center justify-between border-b border-border bg-bg/90 px-5 py-3 backdrop-blur">
         <div className="flex items-center gap-2.5">
@@ -204,7 +66,7 @@ export default function Page() {
           <span className="font-display text-xl tracking-tight text-text">KICK.FUN</span>
         </div>
         <div className="flex items-center gap-2">
-          <Chip tone="pitch">◆ 1,240</Chip>
+          <Chip tone="pitch">1,240 pts</Chip>
           <Chip>#3 GLOBAL</Chip>
         </div>
       </header>
@@ -222,18 +84,18 @@ export default function Page() {
           ARCADE
         </h1>
         <p className="mt-4 max-w-md text-lg text-text-dim">
-          The KICK.FUN design system. Watch the World Cup with your mates, predict live, and the
+          The KICK.FUN component system. Watch the World Cup with your mates, predict live, and the
           results <span className="text-win">can&apos;t be faked</span>.
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
-          <PixelButton>Start a terrace</PixelButton>
-          <PixelButton variant="secondary">Join with code</PixelButton>
+          <Button>Start a terrace</Button>
+          <Button variant="secondary">Join with code</Button>
         </div>
       </section>
 
       <Section eyebrow="01 · COLOR" title="Floodlit palette">
         <p className="mb-4 max-w-lg text-sm text-text-muted">
-          One hero accent (pitch green) on floodlit near-black. Amber &amp; red are match signals only —
+          One hero accent (pitch green) on floodlit near-black. Amber and red are match signals only,
           never decoration.
         </p>
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
@@ -247,71 +109,151 @@ export default function Page() {
       </Section>
 
       <Section eyebrow="02 · TYPE" title="Three roles, never blurred">
-        <div className="space-y-5">
+        <div className="space-y-4">
           <div className="rounded-card border-2 border-border-strong bg-surface-2 p-4">
-            <div className="mb-1 font-mono text-xs uppercase tabular text-text-muted">Display · Pixelify Sans</div>
-            <div className="font-display text-3xl text-text">GOAL! 90+3&apos;</div>
+            <Mono className="mb-1 block text-xs uppercase text-text-muted">Display · Pixelify Sans</Mono>
+            <div className="font-display text-3xl text-text">GOAL 90+3</div>
           </div>
           <div className="rounded-card border-2 border-border-strong bg-surface-2 p-4">
-            <div className="mb-1 font-mono text-xs uppercase tabular text-text-muted">Data · JetBrains Mono (→ Departure Mono)</div>
-            <div className="font-mono text-2xl font-bold tabular text-text">2–1 · 1.85 · +50 · 9Exb…cKaA</div>
+            <Mono className="mb-1 block text-xs uppercase text-text-muted">Data · JetBrains Mono (target: Departure Mono)</Mono>
+            <Mono className="text-2xl font-bold text-text">2–1 · 1.85 · +50 · 9Exb…cKaA</Mono>
           </div>
           <div className="rounded-card border-2 border-border-strong bg-surface-2 p-4">
-            <div className="mb-1 font-mono text-xs uppercase tabular text-text-muted">Body · Space Grotesk</div>
+            <Mono className="mb-1 block text-xs uppercase text-text-muted">Body · Space Grotesk</Mono>
             <div className="text-base text-text">Call it before the ref does. Nobody rigs the table.</div>
           </div>
         </div>
       </Section>
 
-      <Section eyebrow="03 · BUTTONS" title="Hard-edged, tactile">
-        <div className="flex flex-wrap items-center gap-3">
-          <PixelButton>Primary</PixelButton>
-          <PixelButton variant="secondary">Secondary</PixelButton>
-          <PixelButton variant="ghost">Ghost</PixelButton>
-          <PixelButton disabled className="opacity-40">
-            Disabled
-          </PixelButton>
+      <Section eyebrow="03 · CONTROLS" title="Buttons, chips, stats">
+        <div className="space-y-5">
+          <div className="flex flex-wrap items-center gap-3">
+            <Button>Primary</Button>
+            <Button variant="secondary">Secondary</Button>
+            <Button variant="danger">Danger</Button>
+            <Button variant="ghost">Ghost</Button>
+            <Button loading>Loading</Button>
+            <Button size="sm">Small</Button>
+            <Button size="lg">Large</Button>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Chip>default</Chip>
+            <Chip tone="pitch">live</Chip>
+            <Chip tone="warn">held</Chip>
+            <Chip tone="danger">card</Chip>
+            <Tag className="text-text-muted">EYEBROW TAG</Tag>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <StatTile label="Volume" value="4.0B" delta={{ dir: "up", value: "12%" }} />
+            <StatTile label="Odds BRA" value="1.85" delta={{ dir: "down", value: "0.05" }} />
+            <StatTile label="Streak" value="5" />
+            <StatTile label="Rank" value="#3" delta={{ dir: "up", value: "2" }} />
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <Input placeholder="Enter room code" className="max-w-xs" />
+            <RoomCodeChip code="BRA-9F2" />
+          </div>
         </div>
-        <p className="mt-3 text-sm text-text-muted">Press one — the shadow collapses and it sinks 2px. Arcade feel.</p>
       </Section>
 
-      <Section eyebrow="04 · LIVE ROOM" title="The terrace (interactive)">
+      <Section eyebrow="04 · THE TERRACE" title="Live room (interactive)">
         <div className="space-y-4">
-          <Scoreboard hs={hs} as={1} />
+          <PotBanner sponsor="Adidas" amount="1,000 USDC" status="funded" />
+          <Scoreboard home="BRA" away="ARG" homeScore={homeScore} awayScore={1} clock="78:04" />
           <div className="grid gap-4 sm:grid-cols-2">
-            <PredictionCard state={bumped ? "win" : "open"} points={50} />
-            <PredictionCard state={carded ? "review" : "locked"} points={0} />
+            <PredictionCard
+              prompt="NEXT GOAL?"
+              options={options}
+              state={goal ? "win" : "open"}
+              points={50}
+              progress={0.6}
+            />
+            <PredictionCard
+              prompt="CARD THIS HALF?"
+              options={[
+                { name: "YES", odds: "2.10", picked: true },
+                { name: "NO", odds: "1.70" },
+              ]}
+              state={vard ? "review" : "locked"}
+              correctAnswer="No"
+            />
           </div>
           <div className="flex flex-wrap gap-3">
-            <PixelButton onClick={() => setHs((n) => (n === 1 ? 2 : 1))}>
-              {bumped ? "Reset" : "⚽ Simulate goal"}
-            </PixelButton>
-            <PixelButton variant="secondary" onClick={() => setCarded((c) => !c)}>
-              {carded ? "Clear VAR" : "🟥 Trigger VAR"}
-            </PixelButton>
+            <Button onClick={() => setHomeScore((n) => (n === 1 ? 2 : 1))}>
+              {goal ? "Reset" : "Simulate goal"}
+            </Button>
+            <Button variant="secondary" onClick={() => setVard((v) => !v)}>
+              {vard ? "Clear VAR" : "Trigger VAR"}
+            </Button>
           </div>
           <p className="text-sm text-text-muted">
-            Goal → card settles green + verified. VAR → amber &quot;held&quot; with a scanline until final.
+            Goal settles the card green and verified. VAR holds it amber with a scanline until final.
           </p>
         </div>
       </Section>
 
-      <Section eyebrow="05 · PROOF" title="A hash you can hold">
-        <ProofReceipt />
-      </Section>
-
-      <Section eyebrow="06 · THE TABLE" title="Live leaderboard">
-        <div className="space-y-2">
-          <LeaderRow rank={1} name="pixelpelé" pts={1840} streak={5} />
-          <LeaderRow rank={2} name="var_lord" pts={1620} />
-          <LeaderRow rank={3} name="you" pts={1240} streak={2} you />
-          <LeaderRow rank={4} name="mbappe_maxi" pts={980} />
+      <Section eyebrow="05 · THE ORACLE" title="Your pundit, out loud">
+        <div className="space-y-3">
+          <OracleBubble
+            persona="THE GAFFER"
+            line="That result? Verified, signed by TxLINE, locked on-chain. Nobody's rigging this one."
+            speaking={speaking}
+          />
+          <Button variant="secondary" size="sm" onClick={() => setSpeaking((s) => !s)}>
+            {speaking ? "Stop speaking" : "Speak"}
+          </Button>
         </div>
       </Section>
 
-      <footer className="border-t border-border py-8 text-center font-mono text-xs tabular text-text-muted">
-        KICK.FUN · Floodlit Arcade · floodlit pitch, pixel roar, receipt you can hold
+      <Section eyebrow="06 · PROOF" title="A hash you can hold">
+        <ProofReceipt fixture="BRA v ARG" result="2–1 FINAL" anchor="9Exb…cKaA" />
+      </Section>
+
+      <Section eyebrow="07 · THE TABLE" title="Live leaderboard">
+        <LeaderboardTable
+          rows={[
+            { rank: 1, name: "pixelpele", points: 1840, streak: 5 },
+            { rank: 2, name: "var_lord", points: 1620 },
+            { rank: 3, name: "you", points: 1240, streak: 2, you: true },
+            { rank: 4, name: "maxi", points: 980 },
+          ]}
+        />
+      </Section>
+
+      <Section eyebrow="08 · LOBBY" title="Today's fixtures">
+        <div className="space-y-2">
+          <MatchCard home="BRA" away="ARG" kickoff="20:00" status="live" />
+          <MatchCard home="FRA" away="ESP" kickoff="17:00" status="upcoming" />
+          <MatchCard home="ENG" away="GER" kickoff="14:00" status="final" />
+        </div>
+      </Section>
+
+      <Section eyebrow="09 · SYSTEM" title="Feedback">
+        <div className="max-w-md space-y-2">
+          <Toast tone="win">You called it. +50 points, top of the terrace.</Toast>
+          <Toast tone="warn">VAR check. Points held until the call is final.</Toast>
+          <Toast tone="danger">Missed that one. The table never lies.</Toast>
+        </div>
+      </Section>
+
+      <footer className="border-t border-border py-8 text-center">
+        <Mono className="text-xs text-text-muted">
+          KICK.FUN · Floodlit Arcade · floodlit pitch, pixel roar, receipt you can hold
+        </Mono>
       </footer>
+
+      {/* fixed mobile nav preview */}
+      <div className="fixed inset-x-0 bottom-0 mx-auto max-w-4xl">
+        <BottomNav
+          active={nav}
+          onSelect={setNav}
+          items={[
+            { key: "predict", label: "PREDICT", icon: Ticket },
+            { key: "table", label: "TABLE", icon: Trophy },
+            { key: "oracle", label: "ORACLE", icon: Volume2 },
+          ]}
+        />
+      </div>
     </main>
   );
 }
