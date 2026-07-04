@@ -1,0 +1,22 @@
+{
+  "name": "@kick/ingest",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@kick/shared": "workspace:*",
+    "@kick/txline-client": "workspace:*",
+    "@kick/oracle": "workspace:*",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.2",
+    "@types/node": "^22",
+    "tsx": "^4.19.2"
+  }
+}

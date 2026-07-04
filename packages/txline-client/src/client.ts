@@ -12,16 +12,22 @@ import { z } from "zod";
    INTEGRATIONS.md). Every path lives in the PATHS table below so fixing a
    wrong path is a one-line change. */
 
+/* Paths confirmed live July 4 2026 (fixtures + odds verified against the real
+   devnet API via the official example scripts). Stream/proof paths still to
+   confirm against docs.yaml. */
 export const PATHS = {
   guestStart: "/auth/guest/start",
   tokenActivate: "/api/token/activate",
-  fixtures: "/api/fixtures",
-  oddsSnapshot: "/api/odds/snapshot",
+  fixtures: "/api/fixtures/snapshot", // ?competitionId=72&startEpochDay=NNNNN (World Cup = 72)
+  oddsSnapshot: "/api/odds/snapshot", // + /{fixtureId}
   oddsStream: "/api/odds/stream",
   scoresSnapshot: "/api/scores/snapshot",
   scoresStream: "/api/scores/stream",
   scoresProof: "/api/scores/proof",
 } as const;
+
+/** World Cup 2026 competition id on TxLINE. */
+export const WORLD_CUP_COMPETITION_ID = 72;
 
 const GuestSession = z.object({ token: z.string() });
 
@@ -93,13 +99,13 @@ export class TxLineClient {
   }
 
   fixtures(query?: Record<string, string | number>) {
-    return this.get(PATHS.fixtures, query);
+    return this.get(PATHS.fixtures, { competitionId: WORLD_CUP_COMPETITION_ID, ...query });
   }
   scoresSnapshot(fixtureId: number) {
-    return this.get(PATHS.scoresSnapshot, { fixtureId });
+    return this.get(`${PATHS.scoresSnapshot}/${fixtureId}`);
   }
   oddsSnapshot(fixtureId: number) {
-    return this.get(PATHS.oddsSnapshot, { fixtureId });
+    return this.get(`${PATHS.oddsSnapshot}/${fixtureId}`);
   }
   /** Validation proof for on-chain settlement (shape per tx-on-chain docs). */
   scoresProof(fixtureId: number, ts?: number) {

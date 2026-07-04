@@ -3,6 +3,9 @@ packages:
   - "packages/*"
 
 allowBuilds:
+  bigint-buffer: false
+  bufferutil: true
   esbuild: true
   sharp: false
   unrs-resolver: false
+  utf-8-validate: true
