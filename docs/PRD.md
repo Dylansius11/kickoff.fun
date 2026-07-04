@@ -1,13 +1,23 @@
-# kickoff.fun — Product Requirements Document
+# KICK.FUN — Product Requirements Document
 
 _Watch the World Cup with friends. Predict live. The results can't be faked._
 
-**Version:** 1.2 — hackathon build (supersedes v1.0 "Terrace")
+**Version:** 1.3 — hackathon build (supersedes v1.2 "kickoff.fun", v1.0 "Terrace")
 **Author:** Solo founder
 **Target:** TxODDS World Cup Hackathon — **Consumer & Fan Experiences track ($16K)**
 **Submission deadline:** July 19, 2026, 23:59 UTC
 **Platform:** Mobile-first responsive web app (PWA), Solana devnet
-**Domain / brand:** kickoff.fun (in-app, a match room is called a **"terrace"** — "start a terrace")
+**Brand / domain:** **KICK.FUN** (domain `kick.fun`). In-app, a match room is called a **"terrace"** — "start a terrace."
+
+**Foundation docs (this repo, `/docs`):**
+| Doc | Purpose |
+| --- | --- |
+| `PRD.md` (this) | Product: what we build, for whom, why, how it makes money |
+| `ARCHITECTURE.md` | System design, data flow, service boundaries, deployment |
+| `TECH-STACK.md` | Exact versioned stack + rationale (verified July 2026) |
+| `SMART-CONTRACT.md` | Anchor program: accounts, PDAs, instructions, proof verification, security |
+| `INTEGRATIONS.md` | TxLINE, Privy, TTS, RPC, Supabase — auth flows + endpoints |
+| `ERD.md` | Data model: off-chain (Postgres) + on-chain accounts + relationships |
 
 ---
 
@@ -15,7 +25,7 @@ _Watch the World Cup with friends. Predict live. The results can't be faked._
 
 | Decision | v1.0 | v1.2 (this doc) | Why |
 | --- | --- | --- | --- |
-| Name | Terrace | **kickoff.fun** | US-hosted WC + US-heavy crypto judges; `.fun` = legible, on-trend. "Terrace" kept only as the room metaphor. |
+| Name | Terrace → kickoff.fun | **KICK.FUN** | Shortest, punchiest, most typable. `.fun` = legible + on-trend (pump.fun energy). "Terrace" kept only as the room metaphor ("start a terrace"). |
 | Core stakes | Devnet USDC peer staking + escrow | **Points (non-cashable) for players; sponsor-funded USDC pot** | Peer staking = gambling optics + custody risk + zero revenue. Removed. |
 | Positioning | "Host can't cheat your friends" | **"The data itself can't be faked"** (Spotify-scandal wedge) | Fans don't fear a friend rigging a free game. They _do_ get that manipulated data settled real markets last week. |
 | Season League | Built feature | **Roadmap only** (2 mockup screens in video) | Solo/15-day scope. One flawless loop beats two half-built. |
@@ -29,7 +39,7 @@ _Watch the World Cup with friends. Predict live. The results can't be faked._
 
 ## 1. One-line summary
 
-kickoff.fun turns watching a World Cup match into a live social game: friends join a private **terrace** (room), predict what happens next off real-time TxLINE data, an AI pundit (**the Oracle**) calls the action out loud, and every result is settled automatically against **cryptographically signed** match data anchored on Solana — so nobody, not even us, and not a faked data feed, can rig who won.
+KICK.FUN turns watching a World Cup match into a live social game: friends join a private **terrace** (room), predict what happens next off real-time TxLINE data, an AI pundit (**the Oracle**) calls the action out loud, and every result is settled automatically against **cryptographically signed** match data anchored on Solana — so nobody, not even us, and not a faked data feed, can rig who won.
 
 ---
 
@@ -41,7 +51,7 @@ Most fans watch the World Cup with a phone in their hand, but the second-screen 
 - **Friend-group competition runs on spreadsheets and group chats.** Sweepstakes, survivor pools, bracket pools — all manual. Someone is the "commissioner," tracks results by hand, everyone trusts them not to fat-finger or play favorites.
 - **The data behind prediction just got caught being fakeable.** July 3, 2026: **Spotify demanded Kalshi + Polymarket drop its logo after markets settled off _manipulated_ stream data** (Bloomberg / The Block). Live, national-news proof that prediction settlement is only as honest as its data source.
 
-**The gap kickoff.fun fills:** the social, low-stakes, **provably-real** companion experience for friend groups watching together — settled off data that is signed at the source and cannot be manipulated the way Spotify's was. This maps directly onto the Consumer & Fan Experiences track, the least-contested track relative to its prize pool (10 submissions / $16K at time of writing).
+**The gap KICK.FUN fills:** the social, low-stakes, **provably-real** companion experience for friend groups watching together — settled off data that is signed at the source and cannot be manipulated the way Spotify's was. This maps directly onto the Consumer & Fan Experiences track, the least-contested track relative to its prize pool (10 submissions / $16K at time of writing).
 
 ---
 
@@ -84,9 +94,9 @@ Confirmed from TxLINE documentation:
 - **Auth flow:** guest JWT (`POST /auth/guest/start`) → free on-chain subscription (`subscribe` instruction, SL1 or SL12, no TxL payment) → activate API token (`/api/token/activate`) → call data endpoints with `Authorization: Bearer {jwt}` + `X-Api-Token: {apiToken}`.
 - **Network:** devnet program ID `6pW64gN1s2uqjHkn1unFeEjAwJkPGHoppGvS715wyP2J`, endpoint `https://txline-dev.txodds.com`. (Mainnet program `9ExbZjAapQww1vfcisDmrngPinHTEfpjYRWMunJgcKaA`.)
 
-### Which TxLINE data drives which part of kickoff.fun
+### Which TxLINE data drives which part of KICK.FUN
 
-| kickoff.fun element | TxLINE source |
+| KICK.FUN element | TxLINE source |
 | --- | --- |
 | Who-vs-who, schedule, kickoff time, group/round | **Fixtures** endpoint |
 | Live score, goals, cards, match clock (the game's pulse) | **Scores** stream |
@@ -164,7 +174,7 @@ Design language: mobile-first, stadium-at-night energy, one-thumb reachable, big
 
 ### 7.0 Global: the Oracle (AI pundit) — lives across the room, not a screen
 
-The Oracle is kickoff.fun's live commentator + hype-man. It is the feature that makes "proof" _fun to hear_ and the room feel alive.
+The Oracle is KICK.FUN's live commentator + hype-man. It is the feature that makes "proof" _fun to hear_ and the room feel alive.
 
 - **MVP = templated TTS.** Deterministic text templates filled with live TxLINE data, spoken via a TTS voice. No heavy LLM needed for MVP (deterministic = judges trust it; cheaper; ships faster).
 - **Trigger events + example lines:**
@@ -217,7 +227,7 @@ The Oracle is kickoff.fun's live commentator + hype-man. It is the feature that 
 
 ### 7.6 Points & Rewards (what points are _for_)
 
-**Points are non-cashable by design.** Points are never redeemable for money or crypto — that keeps kickoff.fun free-to-play and clear of gambling law, and means we hold **no financial liability** to users. Points buy:
+**Points are non-cashable by design.** Points are never redeemable for money or crypto — that keeps KICK.FUN free-to-play and clear of gambling law, and means we hold **no financial liability** to users. Points buy:
 
 1. **Status / bragging rights** — leaderboard position, streak badges, "terrace champion" flair. The core loop (Duolingo/Strava-style).
 2. **Cosmetics** — room themes, **Oracle voices**, prediction-card skins, avatars. Points unlock the free tier; real money (cosmetic purchase) unlocks premium. Pure-margin monetization hook.
@@ -304,7 +314,7 @@ Guiding principle: **judging is heavily weighted on the demo video**, and live m
 
 ## 11. Demo video script (60% of the grade — plan it like the product)
 
-1. **Hook (0:00–0:30):** "$4B sits on Polymarket's who-wins-the-whole-thing market. But 77% of fans are on their phone _during_ the match with nothing to do — and last week, markets settled real money off _faked_ Spotify data. kickoff.fun fixes both."
+1. **Hook (0:00–0:30):** "$4B sits on Polymarket's who-wins-the-whole-thing market. But 77% of fans are on their phone _during_ the match with nothing to do — and last week, markets settled real money off _faked_ Spotify data. KICK.FUN fixes both."
 2. **The roar (0:30–3:00):** Screen-record a **TxLINE replay** of a real group-stage match (e.g., France–Senegal, Mbappé). Friends in a terrace, predictions fire, the **Oracle shouts** over a goal, leaderboard swings, streak climbs. Feels alive. _Fun first._
 3. **The magic trick (3:00–4:00):** Tap a settled card → the proof + Solana anchor. Oracle line: "That result? Verified, signed by TxLINE, locked on-chain — nobody's rigging this one." Show the sponsor pot releasing to the winner by proof.
 4. **The business (4:00–5:00):** 20s Season League mockups + one line: "Fans play free, brands fund pots, and any sportsbook can white-label this — powered by TxLINE." Close.
@@ -323,6 +333,89 @@ Guiding principle: **judging is heavily weighted on the demo video**, and live m
 | Legal/gambling exposure | Players stake nothing; points non-cashable; money enters only as sponsor→winner via proof; devnet only. |
 | No live matches during judging | Demo video is the deliverable. Prepare a TxLINE replay / recorded run so the walkthrough is flawless regardless of live activity. |
 | Competing with Polymarket/Kalshi head-on | We don't. We win the social/consumer layer they ignore, wrapped in the "unriggable data" narrative the Spotify scandal just handed us. |
+
+---
+
+## 13. Project structure (monorepo)
+
+Single **pnpm + Turborepo** monorepo. One place, three deployables (web, ingest worker, Anchor program) sharing typed contracts. Full rationale in `ARCHITECTURE.md` / `TECH-STACK.md`.
+
+```
+kick.fun/
+├─ docs/                      # foundation docs (this PRD + ARCHITECTURE, TECH-STACK, SMART-CONTRACT, INTEGRATIONS, ERD)
+├─ apps/
+│  ├─ web/                    # Next.js 16 PWA (App Router) — the fan-facing product
+│  └─ ingest/                 # Node worker: TxLINE SSE → props/results/Oracle → Supabase + settle triggers
+├─ programs/
+│  └─ kick-settlement/        # Anchor 1.0 program: proof verify + points settle + results anchor + sponsor-pot claim
+├─ packages/
+│  ├─ txline-client/          # typed TxLINE REST + SSE client (auth, fixtures, scores, odds, proofs)
+│  ├─ program-client/         # Codama-generated @solana/kit client for kick-settlement
+│  ├─ oracle/                 # Oracle trigger engine: event → template → TTS (provider-agnostic)
+│  ├─ shared/                 # zod schemas, domain types, prop/finality logic (shared web + ingest)
+│  └─ ui/                     # shadcn/ui components, brand tokens, motion primitives
+├─ supabase/                  # SQL migrations, RLS policies, Realtime config (see ERD.md)
+├─ turbo.json  pnpm-workspace.yaml  .env.example
+```
+
+Boundary rule: **all match logic (prop generation, result detection, finality gate) lives in `packages/shared`** so web and ingest never diverge, and settlement math is unit-testable without the chain or the network.
+
+---
+
+## 14. Brainstorm & future bets (parking lot — NOT in hackathon scope)
+
+Ideas worth capturing so they're not lost, explicitly deferred so they don't threaten the frozen MVP. Ranked by conviction.
+
+**High conviction — natural v2:**
+- **Momentum meter → tradeable instrument.** Convert TxLINE live odds into a live win-probability % and let users take a position that settles at full-time off the proof. The only genuinely-novel instrument in the space (perps today are on price, not sports probability). High ceiling; deferred because perp mechanics are a project unto themselves. This is the "go big" pivot if KICK.FUN ever needs one.
+- **AI Oracle as a standalone Telegram bot.** The Oracle detached from a room — subscribe to a match, it DMs voice/text on every goal, card, big odds move. Cheap distribution, viral, and a second front door into KICK.FUN. Could even ship post-hackathon in days.
+- **Rivalry rooms / brackets across friend groups.** Group-vs-group leaderboards, city-vs-city, subreddit-vs-subreddit. Turns the social wedge into a growth loop.
+
+**Medium conviction — test after launch:**
+- **Predictions as a shareable "call your shot" NFT/receipt** minted before the event, revealed after. The brag object becomes collectible.
+- **Creator/streamer terraces.** A streamer hosts a public terrace; their audience plays along live. Built-in influencer distribution.
+- **Cross-match parlays for points** — string predictions across several matches for streak multipliers.
+
+**Low conviction / watch-only:**
+- **Mainnet real-money pools** — only behind a licensed operator (regulatory). Stays v2+, B2B-only.
+- **Token/points-token economy** — regulatory + AI-slop risk. Avoid unless there's a real reason.
+- **Other sports (NBA, NFL) via the same TxLINE schema** — the single normalized schema makes this near-free later; irrelevant during a World-Cup-only hackathon.
+
+**Rule:** nothing here enters the build before the §9 MVP is flawless and submitted. Capture, don't chase.
+
+---
+
+## 15. Things to consider — open questions & how we harness this idea
+
+Honest tensions and unknowns, each with a working answer and a trigger for revisiting. This is where we pressure-test our own thesis.
+
+### 15.1 Open questions to resolve (Day 1–2, in TxLINE Telegram / testing)
+
+| # | Question | Why it matters | Default assumption if unanswered |
+| --- | --- | --- | --- |
+| Q1 | Exact **proof format** (Merkle path? ed25519 signature? both?) | Sets which rung of the fallback ladder (§6.3) we build; drives the whole Anchor design | Assume ed25519-signed payload → build rung 3 (off-chain verify + on-chain hash anchor), upgrade if it's Merkle |
+| Q2 | Does **Fixtures** return the full 104-match schedule + team names + kickoff times up front? | The lobby (§7.2) and room creation depend on it | Assume yes; cache a static fallback schedule if the endpoint is thin |
+| Q3 | **SSE stream** granularity: per-event push (goal/card) or periodic snapshot diffs? | Determines prop-settlement latency + Oracle trigger design | Assume periodic snapshot diffs; diff two snapshots to detect events |
+| Q4 | Does the free tier permit **replay** of a completed match on demand? | The entire demo depends on replaying a real match as "live" | Assume yes (docs mention historical replay); fallback = record one real match ourselves and replay from our own capture |
+| Q5 | Rate/connection limits on **concurrent SSE** subscriptions | Affects whether ingest fans out one connection to many rooms | Assume 1 upstream connection per match, fanned out via Supabase Realtime |
+| Q6 | Is there a real **subscription/gas cost** on devnet for the `subscribe` instruction? | Affects onboarding flow if each user must subscribe | Assume the app (one service keypair) holds the TxLINE subscription, not each user |
+
+### 15.2 Design tensions we're deliberately resolving one way
+
+- **Proof is judge-facing, not fan-facing.** Fans don't fear a rigged free game. We harness this by making the **Oracle speak the proof** (turns a boring badge into a punchline) and by riding the **Spotify "faked data" scandal** so "provably real" attaches to a pain fans just read about in the news. Revisit if playtesters still shrug at the proof surface.
+- **Points can't be cash, or it's gambling.** Non-cashable points remove all custody/gambling liability but weaken the "why do I care" hook. We harness it via **status + cosmetics + tournament rank + sponsor prizes** — glory and access, not a wallet. Revisit only for a licensed mainnet v2.
+- **Sponsor pot is the only real money on screen.** It gives the demo genuine on-chain settlement stakes without any player wagering. If no sponsor is attached, a room is pure points — still fully playable. The pot is a **demoable business model**, not a dependency.
+- **SL1 delay is a feature, not a bug.** We settle off the 60s-delayed tier so no one can "predict the past" and VAR reversals resolve first. Framed as a deliberate fairness margin.
+- **Solo scope is the #1 killer.** Every "wouldn't it be cool" goes to §14, not the build. The Oracle stays templated (not LLM) until the core loop is flawless. Season League stays a mockup.
+
+### 15.3 How we harness this idea to actually win (the meta-strategy)
+
+1. **Build the thing TxODDS screenshots in a sales deck.** Judges are betting-data pros. Make TxLINE look fast, verifiable, and consumer-magical. Every demo beat showcases *their* data doing something delightful.
+2. **Attach to live news.** The Spotify manipulation scandal (July 3) is a gift — it makes "unriggable data" a headline, not a lecture. Lead the submission with it while it's hot.
+3. **Win on taste, not scope.** Consumer track is judged on UX/originality/polish. A single flawless, beautiful loop with sound (the Oracle) beats a sprawling half-built platform. Design is the moat here.
+4. **Make the demo the product.** 60% of the grade is the video. We design the 5-minute narrative (§11) *first* and build backward from the shots we need.
+5. **Answer "so what's the business" before they ask.** B2B white-label to sportsbooks (= TxODDS's customers) + brand-funded pools. The money slide flatters the judges' own business model.
+6. **Show, don't tell, the on-chain part.** One real proof-verified settlement + one sponsor-pot claim, tappable and live on devnet, beats any amount of "we plan to." Working > polished-but-fake (the Colosseum winner pattern).
 
 ---
 
