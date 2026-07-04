@@ -1,0 +1,30 @@
+# deps
+node_modules/
+.pnpm-store/
+
+# next
+.next/
+out/
+next-env.d.ts
+
+# builds
+dist/
+build/
+.turbo/
+
+# anchor / solana
+target/
+test-ledger/
+.anchor/
+**/*.rs.bk
+
+# env & secrets
+.env
+.env*.local
+*.keypair.json
+wallets/
+
+# misc
+*.log
+.DS_Store
+coverage/

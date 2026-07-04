@@ -9,15 +9,17 @@ _Watch the World Cup with friends. Predict live. The results can't be faked._
 **Platform:** Mobile-first responsive web app (PWA), Solana devnet
 **Brand / domain:** **KICK.FUN** (domain `kick.fun`). In-app, a match room is called a **"terrace"** — "start a terrace."
 
-**Foundation docs (this repo, `/docs`):**
+**Foundation docs (this repo):**
 | Doc | Purpose |
 | --- | --- |
-| `PRD.md` (this) | Product: what we build, for whom, why, how it makes money |
-| `ARCHITECTURE.md` | System design, data flow, service boundaries, deployment |
-| `TECH-STACK.md` | Exact versioned stack + rationale (verified July 2026) |
-| `SMART-CONTRACT.md` | Anchor program: accounts, PDAs, instructions, proof verification, security |
-| `INTEGRATIONS.md` | TxLINE, Privy, TTS, RPC, Supabase — auth flows + endpoints |
-| `ERD.md` | Data model: off-chain (Postgres) + on-chain accounts + relationships |
+| `docs/PRD.md` (this) | Product: what we build, for whom, why, how it makes money |
+| `docs/technical/ARCHITECTURE.md` | System design, data flow, service boundaries, deployment |
+| `docs/technical/TECH-STACK.md` | Exact versioned stack + rationale (verified July 2026) |
+| `docs/technical/SMART-CONTRACT.md` | Anchor program: accounts, PDAs, instructions, proof verification, security |
+| `docs/technical/INTEGRATIONS.md` | TxLINE, Privy, TTS, RPC, Supabase — auth flows + endpoints |
+| `docs/technical/ERD.md` | Data model: off-chain (Postgres) + on-chain accounts + relationships |
+| `docs/design/DESIGN_GUIDE.md` | **Floodlit Arcade** design language, components, motion, anti-slop |
+| `brand.md` (repo root) | Machine-readable design tokens (colors, fonts, radius, motion) |
 
 ---
 

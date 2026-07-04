@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+/* ── KICK.FUN · Floodlit Arcade tokens (mirror of /brand.md) ── */
+:root {
+  color-scheme: dark;
+
+  /* pitch — hero green */
+  --pitch-50: #e7fcef;  --pitch-100: #c6f7d8; --pitch-200: #92eeb4; --pitch-300: #5fe291;
+  --pitch-400: #38d673; --pitch-500: #22c55e; --pitch-600: #16a34a; --pitch-700: #108239;
+  --pitch-800: #0c602b; --pitch-900: #0a3d1e;
+
+  /* ink — green-tinted near-black */
+  --ink-950: #080b09; --ink-900: #0c110e; --ink-800: #141c17;
+  --ink-700: #1b2620; --ink-600: #26332b; --ink-500: #37483d;
+
+  /* fog — text ramp */
+  --chalk: #f1f5f0; --fog-400: #a7b3ac; --fog-500: #7c8a81; --fog-600: #566159;
+
+  /* signals */
+  --warn: #f5a524; --danger: #f4433b;
+
+  /* semantic */
+  --bg: var(--ink-950); --surface: var(--ink-900); --surface-2: var(--ink-800); --raised: var(--ink-700);
+  --border: rgba(241, 245, 240, 0.1); --border-strong: rgba(241, 245, 240, 0.16);
+  --text: var(--chalk); --text-dim: var(--fog-400); --text-muted: var(--fog-500);
+  --primary: var(--pitch-500); --on-primary: var(--ink-950); --glow: var(--pitch-400); --win: var(--pitch-500);
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-raised: var(--raised);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-text: var(--text);
+  --color-text-dim: var(--text-dim);
+  --color-text-muted: var(--text-muted);
+  --color-chalk: var(--chalk);
+  --color-pitch: var(--pitch-500);
+  --color-pitch-600: var(--pitch-600);
+  --color-pitch-700: var(--pitch-700);
+  --color-pitch-glow: var(--pitch-400);
+  --color-ink-950: var(--ink-950);
+  --color-ink-800: var(--ink-800);
+  --color-win: var(--win);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --color-on-primary: var(--on-primary);
+
+  --font-display: var(--font-pixelify), ui-monospace, monospace;
+  --font-sans: var(--font-grotesk), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-jetbrains), ui-monospace, monospace;
+
+  --radius-card: 4px;
+
+  --shadow-hard: 4px 4px 0 0 var(--ink-950);
+  --shadow-hard-pitch: 4px 4px 0 0 var(--pitch-700);
+  --shadow-press: 2px 2px 0 0 var(--ink-950);
+  --shadow-glow: 0 0 24px rgba(34, 197, 94, 0.35);
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+}
+
+/* helpers */
+.font-display { font-family: var(--font-display), ui-monospace, monospace; }
+.tabular { font-variant-numeric: tabular-nums; }
+.scanlines {
+  background-image: repeating-linear-gradient(0deg, rgba(0, 0, 0, 0.22) 0 1px, transparent 1px 3px);
+}
+
+/* motion — "live, not scary" */
+@keyframes live-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+@keyframes amber-breathe {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(245, 165, 36, 0); }
+  50% { box-shadow: 0 0 14px 0 rgba(245, 165, 36, 0.4); }
+}
+.animate-live { animation: live-pulse 1.6s ease-in-out infinite; }
+.animate-var { animation: amber-breathe 1.8s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-live, .animate-var { animation: none; }
+}
