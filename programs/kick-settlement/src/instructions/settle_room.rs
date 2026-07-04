@@ -10,6 +10,7 @@ use crate::errors::KickError;
 use crate::events::RoomSettled;
 use crate::merkle::{verify_path, HashAlgo, ProofNode};
 use crate::state::{Config, Room, RoomStatus, VerifyMode};
+use crate::txoracle::{cpi_validate_stat, StatValidation};
 
 /// TxLINE proof material, shaped after the documented REST payload
 /// (summary + proof node arrays; see .claude/skills/kick-contract/SKILL.md).
@@ -28,6 +29,10 @@ pub struct TxProof {
     /// sha256 digest of the full raw TxLINE proof response (rung C anchor;
     /// stored on-chain for tamper-evidence in every mode).
     pub raw_digest: [u8; 32],
+    /// Full validate_stat payload for VerifyMode::CpiValidateStat (rung A).
+    /// None in other modes. With CPI active, remaining_accounts must carry
+    /// [txoracle_program, daily_scores_merkle_roots].
+    pub cpi: Option<StatValidation>,
 }
 
 #[derive(Accounts)]
@@ -77,9 +82,26 @@ pub fn settle_room(
         VerifyMode::MerkleSha256 => {
             verify_path(HashAlgo::Sha256, proof.leaf, &proof.path, &proof.expected_root)?;
         }
-        // Rung A: CPI into txoracle validate_stat. Reserved until CU headroom
-        // and the txoracle account set are proven out (their ix runs ~1.4M CU).
-        VerifyMode::CpiValidateStat => return err!(KickError::VerifyModeNotEnabled),
+        // Rung A: CPI into txoracle validate_stat. The oracle re-hashes the
+        // raw stat and walks its own tree against the on-chain roots PDA, so
+        // no hash-algorithm assumption lives in this program. Client must
+        // attach a compute-budget ix (their validation is compute-heavy).
+        VerifyMode::CpiValidateStat => {
+            let payload = proof.cpi.as_ref().ok_or(KickError::MissingCpiPayload)?;
+            // The oracle proof must attest the same fixture as this room.
+            require!(
+                payload.fixture_summary.fixture_id == room.fixture_id as i64,
+                KickError::FixtureMismatch
+            );
+            let accs = ctx.remaining_accounts;
+            require!(accs.len() >= 2, KickError::MissingCpiPayload);
+            cpi_validate_stat(
+                ctx.accounts.config.txoracle_program,
+                &accs[0],
+                &accs[1],
+                payload,
+            )?;
+        }
     }
 
     room.status = RoomStatus::Settled;

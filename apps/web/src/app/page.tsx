@@ -21,6 +21,8 @@ import {
   StatTile,
   Toast,
   BottomNav,
+  SoundToggle,
+  useSound,
 } from "@kick/ui";
 
 function Swatch({ name, hex }: { name: string; hex: string }) {
@@ -50,6 +52,7 @@ export default function Page() {
   const [speaking, setSpeaking] = useState(true);
   const [nav, setNav] = useState("predict");
   const goal = homeScore > 1;
+  const { play, roar } = useSound();
 
   const options = [
     { name: "BRAZIL", odds: "1.85", picked: true },
@@ -68,6 +71,7 @@ export default function Page() {
         <div className="flex items-center gap-2">
           <Chip tone="pitch">1,240 pts</Chip>
           <Chip>#3 GLOBAL</Chip>
+          <SoundToggle />
         </div>
       </header>
 
@@ -179,15 +183,33 @@ export default function Page() {
             />
           </div>
           <div className="flex flex-wrap gap-3">
-            <Button onClick={() => setHomeScore((n) => (n === 1 ? 2 : 1))}>
+            <Button
+              onClick={() => {
+                const scoring = homeScore === 1;
+                setHomeScore((n) => (n === 1 ? 2 : 1));
+                if (scoring) {
+                  play("goal");
+                  roar();
+                } else {
+                  play("tap");
+                }
+              }}
+            >
               {goal ? "Reset" : "Simulate goal"}
             </Button>
-            <Button variant="secondary" onClick={() => setVard((v) => !v)}>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setVard((v) => !v);
+                play(vard ? "tap" : "var");
+              }}
+            >
               {vard ? "Clear VAR" : "Trigger VAR"}
             </Button>
           </div>
           <p className="text-sm text-text-muted">
-            Goal settles the card green and verified. VAR holds it amber with a scanline until final.
+            Goal settles the card green and verified, with a chiptune fanfare and crowd roar if sound
+            is on. VAR holds it amber with a scanline and a two-tone alert.
           </p>
         </div>
       </Section>

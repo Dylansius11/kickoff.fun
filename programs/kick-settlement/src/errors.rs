@@ -42,4 +42,14 @@ pub enum KickError {
     NoSponsor,
     #[msg("signer is not the program upgrade authority")]
     NotUpgradeAuthority,
+    #[msg("txoracle program account mismatch")]
+    OracleProgramMismatch,
+    #[msg("roots account not owned by txoracle")]
+    OracleAccountNotOwned,
+    #[msg("txoracle returned no data")]
+    OracleNoReturn,
+    #[msg("txoracle rejected the stat validation")]
+    OracleValidationFailed,
+    #[msg("missing CPI validation payload or accounts")]
+    MissingCpiPayload,
 }

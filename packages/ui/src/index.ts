@@ -3,3 +3,5 @@ export * from "./components/primitives";
 export * from "./components/match";
 export * from "./components/social";
 export * from "./components/system";
+export * from "./components/sound-toggle";
+export { sound, type SfxName } from "./sound";

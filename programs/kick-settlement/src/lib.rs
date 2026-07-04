@@ -17,6 +17,7 @@ pub mod events;
 pub mod instructions;
 pub mod merkle;
 pub mod state;
+pub mod txoracle;
 
 use instructions::*;
 use state::VerifyMode;

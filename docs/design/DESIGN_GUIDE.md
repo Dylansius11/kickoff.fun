@@ -157,7 +157,7 @@ Mobile-first, single column, thumb-reachable, bottom nav. Never center-everythin
 
 - **Icons:** pixel/blocky line icons on a consistent grid (or a clean set like Lucide at 2px stroke if pixel icons blow the timeline — keep one family, don't mix). Football motifs (ball, whistle, card, net) drawn as pixel glyphs where it adds joy.
 - **Texture — use with a scalpel:** a faint **CRT scanline / floodlight vignette** is allowed on the hero, the goal burst, and the under-review card **only**. Never as a full-page overlay (that's the gimmick trap). One subtle noise/grain layer at ≤3% is fine for warmth.
-- **Sound (optional, tasteful):** short arcade SFX for tap, lock, goal, settle — muted by default, one toggle. The Oracle voice (TTS) is the primary audio identity. Sound is a delight, never required.
+- **Sound (implemented, tasteful):** all SFX are **synthesized chiptune** (Web Audio oscillators, `packages/ui/src/sound.ts`) — no asset files. Palette: `tap · lock · goal (fanfare) · win (coin) · miss (low buzz) · var (two-tone) · streak (arpeggio) · kickoff (whistle)` + a filtered-noise **crowd ambience** that swells into a roar on goals. Muted by default, one `SoundToggle`, first click unlocks the AudioContext. The Oracle voice (TTS) remains the primary audio identity; SFX are the seasoning under it. Nothing essential is audio-only.
 
 ---
 
