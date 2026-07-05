@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Home, Ticket, Trophy, Shirt, LogIn } from "lucide-react";
-import { BottomNav, Mono, VolumeControl, Avatar } from "@kick/ui";
+import { BottomNav, Mono, VolumeFab, Avatar } from "@kick/ui";
 import { KickAuthProvider, useKickUser } from "@/lib/auth";
 
 const NAV = [
@@ -58,24 +58,26 @@ function AppShell({ children }: { children: React.ReactNode }) {
   const active = activeKey(pathname);
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-[430px] flex-col border-x border-border bg-bg">
-      {/* top bar: brand, points, master fader */}
+    <div className="relative mx-auto flex min-h-dvh w-full max-w-[430px] flex-col border-x border-border bg-bg">
+      {/* top bar: brand, points, identity. The volume fader floats as a FAB. */}
       <header className="sticky top-0 z-40 flex items-center justify-between gap-2 border-b border-border bg-bg/95 px-4 py-2 backdrop-blur">
         <Link href="/app" className="flex shrink-0 items-center gap-2">
           <Image src="/logo.svg" alt="" width={26} height={26} priority />
           <span className="font-display text-base tracking-tight text-text">KICK.FUN</span>
         </Link>
-        <div className="flex min-w-0 items-center gap-1.5">
-          <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-pitch-700 bg-pitch/10 px-2 py-1">
+        <div className="flex min-w-0 items-center gap-2">
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-pitch-700 bg-pitch/10 px-2.5 py-1">
             <Mono className="text-xs font-bold text-win">11,205</Mono>
-            <span className="hidden font-display text-[10px] text-text-muted min-[380px]:inline">PTS</span>
+            <span className="font-display text-[10px] text-text-muted">PTS</span>
           </span>
-          <VolumeControl compact />
           <AuthChip />
         </div>
       </header>
 
       <main className="flex min-h-0 flex-1 flex-col">{children}</main>
+
+      {/* fixed so it stays put while scrolling; right edge hugs the phone column */}
+      <VolumeFab className="fixed right-[max(0.75rem,calc((100vw-430px)/2+0.75rem))]" />
 
       <div className="sticky bottom-0 z-40 bg-bg">
         <BottomNav

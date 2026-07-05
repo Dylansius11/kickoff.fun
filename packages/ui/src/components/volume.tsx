@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { Volume2, Volume1, VolumeX } from "lucide-react";
-import { motion, useReducedMotion } from "motion/react";
+import { AnimatePresence, motion, useReducedMotion } from "motion/react";
 import { cn } from "../lib/utils";
 import { sound } from "../sound";
 
@@ -165,6 +165,71 @@ export function VolumeControl({ className, compact = false }: { className?: stri
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/**
+ * VolumeFab — floating master fader for the mobile app.
+ * A round glassy button hovering above the bottom nav; tap it and the EQ
+ * fader unfolds beside it (tap-first, no hover anywhere). Auto-collapses
+ * after 3.5s of no interaction. Attaches the first-gesture audio unlock.
+ */
+export function VolumeFab({ className }: { className?: string }) {
+  const volume = useVolume();
+  const [open, setOpen] = React.useState(false);
+  const timer = React.useRef<number | null>(null);
+
+  React.useEffect(() => {
+    sound.attachAutoUnlock();
+  }, []);
+
+  const arm = React.useCallback(() => {
+    if (timer.current) window.clearTimeout(timer.current);
+    timer.current = window.setTimeout(() => setOpen(false), 3500);
+  }, []);
+  React.useEffect(() => () => {
+    if (timer.current) window.clearTimeout(timer.current);
+  }, []);
+
+  const muted = volume === 0;
+  const Icon = muted ? VolumeX : volume < 0.5 ? Volume1 : Volume2;
+
+  return (
+    <div className={cn("pointer-events-none absolute bottom-20 right-3 z-40 flex items-center gap-2", className)}>
+      <AnimatePresence>
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, x: 16, scale: 0.9 }}
+            animate={{ opacity: 1, x: 0, scale: 1 }}
+            exit={{ opacity: 0, x: 16, scale: 0.9 }}
+            transition={{ type: "spring", stiffness: 420, damping: 30 }}
+            className="pointer-events-auto rounded-card border-2 border-pitch-700 bg-surface-2/95 shadow-hard backdrop-blur"
+            onPointerDown={arm}
+          >
+            <VolumeControl compact className="border-0 bg-transparent" />
+          </motion.div>
+        )}
+      </AnimatePresence>
+      <motion.button
+        type="button"
+        aria-label={open ? "Hide volume" : "Show volume"}
+        aria-expanded={open}
+        whileTap={{ scale: 0.92 }}
+        onClick={() => {
+          setOpen((o) => !o);
+          arm();
+          if (volume > 0) sound.play("tap");
+        }}
+        className={cn(
+          "pointer-events-auto flex h-11 w-11 items-center justify-center rounded-full border-2 shadow-hard backdrop-blur transition-colors",
+          muted
+            ? "border-border-strong bg-surface-2/90 text-text-muted"
+            : "border-pitch-700 bg-pitch/15 text-win",
+        )}
+      >
+        <Icon size={17} />
+      </motion.button>
     </div>
   );
 }

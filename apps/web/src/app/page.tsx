@@ -26,7 +26,101 @@ import {
   VolumeControl,
   CountUp,
   useSound,
+  sound,
 } from "@kick/ui";
+
+/* ── FloodlightBeams ── two stadium light cones swaying slowly from the top corners. */
+function FloodlightBeams() {
+  const reduce = useReducedMotion();
+  return (
+    <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden" aria-hidden>
+      {[
+        { left: "-4%", origin: "0% 0%", from: -8, to: 6, delay: 0 },
+        { right: "-4%", origin: "100% 0%", from: 8, to: -6, delay: 1.6 },
+      ].map((b, i) => (
+        <motion.div
+          key={i}
+          className="absolute top-[-10%] h-[130%] w-[46%]"
+          style={{
+            left: b.left,
+            right: b.right,
+            transformOrigin: b.origin,
+            background:
+              "linear-gradient(178deg, rgba(34,197,94,0.13), rgba(34,197,94,0.05) 45%, transparent 72%)",
+            clipPath: i === 0 ? "polygon(0 0, 30% 0, 100% 100%, 40% 100%)" : "polygon(70% 0, 100% 0, 60% 100%, 0 100%)",
+          }}
+          animate={reduce ? undefined : { rotate: [b.from, b.to, b.from] }}
+          transition={{ duration: 11, repeat: Infinity, ease: "easeInOut", delay: b.delay }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/* ── Fireflies ── drifting pixel motes in the floodlight, cheap ambience. */
+function Fireflies({ count = 9 }: { count?: number }) {
+  const reduce = useReducedMotion();
+  if (reduce) return null;
+  return (
+    <div className="pointer-events-none absolute inset-0 -z-10 overflow-hidden" aria-hidden>
+      {Array.from({ length: count }, (_, i) => {
+        const h = (i * 2654435761) >>> 0;
+        const left = 6 + (h % 88);
+        const top = 8 + ((h >> 4) % 70);
+        const size = 2 + (i % 3);
+        const dur = 7 + (i % 5) * 1.7;
+        return (
+          <motion.span
+            key={i}
+            className="absolute rounded-[1px] bg-pitch-glow"
+            style={{ left: `${left}%`, top: `${top}%`, width: size, height: size, opacity: 0.35 }}
+            animate={{
+              y: [0, -22 - (i % 4) * 8, 0],
+              x: [0, (i % 2 ? 14 : -14), 0],
+              opacity: [0.12, 0.5, 0.12],
+            }}
+            transition={{ duration: dur, repeat: Infinity, ease: "easeInOut", delay: (i % 6) * 0.8 }}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
+/* ── PixelBoot ── the boot that kicks the ball: swings in from the lower left. */
+function PixelBoot({ kickKey }: { kickKey: number }) {
+  const reduce = useReducedMotion();
+  if (reduce || kickKey === 0) return null;
+  return (
+    <motion.svg
+      key={kickKey}
+      viewBox="0 0 60 40"
+      className="pointer-events-none absolute -bottom-2 -left-16 z-10 h-16 w-24"
+      initial={{ rotate: -55, x: -30, y: 26, opacity: 0 }}
+      animate={{ rotate: [null, 18, 10], x: [null, 6, -4], y: [null, -2, 6], opacity: [0, 1, 0] }}
+      transition={{ duration: 0.5, times: [0, 0.35, 1], ease: [0.2, 0.9, 0.3, 1] }}
+      style={{ transformOrigin: "10% 90%" }}
+      aria-hidden
+    >
+      <g shapeRendering="crispEdges">
+        {/* boot body */}
+        <rect x="6" y="10" width="18" height="18" fill="var(--ink-600)" />
+        <rect x="20" y="16" width="26" height="12" fill="var(--ink-600)" />
+        {/* toe cap */}
+        <rect x="42" y="16" width="10" height="12" fill="var(--chalk)" />
+        {/* sole */}
+        <rect x="6" y="28" width="46" height="5" fill="var(--ink-950)" />
+        {/* studs */}
+        <rect x="12" y="33" width="4" height="4" fill="var(--ink-950)" />
+        <rect x="26" y="33" width="4" height="4" fill="var(--ink-950)" />
+        <rect x="40" y="33" width="4" height="4" fill="var(--ink-950)" />
+        {/* laces */}
+        <rect x="12" y="14" width="10" height="2" fill="var(--pitch-400)" />
+        <rect x="12" y="18" width="10" height="2" fill="var(--pitch-400)" />
+      </g>
+    </motion.svg>
+  );
+}
 
 /* ── PitchBackdrop ── a chalk-lined pitch receding to the horizon, pure CSS 3D. */
 function PitchBackdrop() {
@@ -200,6 +294,19 @@ export default function Landing() {
   const [kick, setKick] = useState(0);
   const heroRef = useRef<HTMLDivElement>(null);
 
+  /* opening whistle: the boot kicks the ball once the entrance settles */
+  React.useEffect(() => {
+    sound.attachAutoUnlock(); // sound is on by default; first tap anywhere unlocks it
+    if (reduce) return;
+    const t = window.setTimeout(() => {
+      setKick(1);
+      setBurst((b) => b + 1);
+      play("kickoff"); // silent until the AudioContext unlocks, that's fine
+    }, 1400);
+    return () => window.clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /* parallax on scroll */
   const { scrollYProgress } = useScroll();
   const ballY = useTransform(scrollYProgress, [0, 0.25], [0, -60]);
@@ -264,6 +371,9 @@ export default function Landing() {
         />
         {/* chalk pitch receding to the horizon */}
         <PitchBackdrop />
+        {/* swaying stadium beams + drifting motes */}
+        <FloodlightBeams />
+        <Fireflies />
 
         <div className="mx-auto grid max-w-6xl items-center gap-10 px-5 pb-20 pt-16 md:grid-cols-[1.15fr_0.85fr] md:pb-28 md:pt-24">
           <div>
@@ -348,8 +458,10 @@ export default function Landing() {
               initial={{ opacity: 0, scale: 0.7 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ type: "spring", stiffness: 200, damping: 20, delay: 0.2 }}
+              className="relative"
             >
               {/* the ball is kickable: boot it and it backflips with a whistle */}
+              <PixelBoot kickKey={kick} />
               <motion.button
                 type="button"
                 aria-label="Kick the ball"

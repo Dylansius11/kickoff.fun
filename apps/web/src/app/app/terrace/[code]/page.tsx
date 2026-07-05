@@ -20,9 +20,19 @@ import {
   type PredictionState,
 } from "@kick/ui";
 import { ORACLE_LINES, ROOM_BOARD } from "../../mock";
+import { teamCode } from "../../../../lib/team-code";
 
 const TABS = ["PREDICT", "TABLE", "ORACLE"] as const;
 type Tab = (typeof TABS)[number];
+
+/** Real room from GET /api/rooms/[code]; null = unknown code, keep the demo terrace. */
+interface RoomInfo {
+  roomId: string;
+  code: string;
+  name: string | null;
+  members: number;
+  fixture: { id: number; home_team: string; away_team: string };
+}
 
 const LOCK_WINDOW_MS = 45_000;
 
@@ -42,6 +52,22 @@ export default function TerracePage() {
   const [burst, setBurst] = React.useState(0);
   const [oracleLine, setOracleLine] = React.useState(ORACLE_LINES.idle);
   const oracleSpeaking = useOracleSpeaking();
+
+  // Real room lookup: when the code exists in Supabase, the header goes live
+  // (fixture teams, terrace name, member count). Unknown codes keep the demo.
+  const [room, setRoom] = React.useState<RoomInfo | null>(null);
+  React.useEffect(() => {
+    let on = true;
+    fetch(`/api/rooms/${encodeURIComponent(code)}`)
+      .then((r) => (r.ok ? (r.json() as Promise<RoomInfo>) : null))
+      .then((data) => {
+        if (on && data) setRoom(data);
+      })
+      .catch(() => {});
+    return () => {
+      on = false;
+    };
+  }, [code]);
 
   // The Gaffer speaks over the tannoy: play toggles voice, wave bars follow.
   const toggleOracleVoice = React.useCallback(() => {
@@ -128,8 +154,8 @@ export default function TerracePage() {
           transition={{ type: "spring", stiffness: 400, damping: 25 }}
         >
           <Scoreboard
-            home="BRA"
-            away="ARG"
+            home={room ? teamCode(room.fixture.home_team) : "BRA"}
+            away={room ? teamCode(room.fixture.away_team) : "ARG"}
             homeScore={score.home}
             awayScore={score.away}
             clock={fmtClock(clockSec)}
@@ -141,7 +167,15 @@ export default function TerracePage() {
       <div className="flex flex-col gap-3 px-4 pb-6">
         <PotBanner sponsor="Adidas" amount="1,000 USDC" status="funded" />
 
-        {/* room strip: code + dev trigger for the demo goal moment */}
+        {/* room strip: name, headcount, code + dev trigger for the demo goal moment */}
+        {room && (
+          <div className="flex items-center justify-between gap-2">
+            <span className="truncate font-display text-sm uppercase tracking-wide text-text">
+              {room.name ?? "TERRACE"}
+            </span>
+            <Tag className="shrink-0 text-text-dim">{room.members} IN</Tag>
+          </div>
+        )}
         <div className="flex items-center justify-between">
           <RoomCodeChip code={code} />
           <button

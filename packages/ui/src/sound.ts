@@ -70,11 +70,16 @@ class SoundEngine {
 
   constructor() {
     if (typeof window !== "undefined") {
-      const saved = Number(window.localStorage?.getItem(STORE_KEY));
-      if (Number.isFinite(saved) && saved > 0) {
-        this._volume = Math.min(1, saved);
-        this._lastNonZero = this._volume;
+      const raw = window.localStorage?.getItem(STORE_KEY);
+      if (raw === null || raw === "") {
+        // first visit: sound ON by default (audio still unlocks on first gesture)
+        this._volume = DEFAULT_VOLUME;
+      } else {
+        const saved = Number(raw);
+        // returning visitor: respect their level, including an explicit mute (0)
+        this._volume = Number.isFinite(saved) ? Math.min(1, Math.max(0, saved)) : DEFAULT_VOLUME;
       }
+      if (this._volume > 0) this._lastNonZero = this._volume;
     }
   }
 
@@ -117,6 +122,24 @@ class SoundEngine {
       this.master.gain.linearRampToValueAtTime(0.0001, now + 0.08);
     }
     this.emit();
+  }
+
+  private unlockAttached = false;
+  /** With sound on by default, the AudioContext still needs a user gesture.
+      Attach a one-time listener that unlocks audio + starts the crowd bed on
+      the first tap/click anywhere. Safe to call many times. */
+  attachAutoUnlock() {
+    if (this.unlockAttached || typeof window === "undefined") return;
+    this.unlockAttached = true;
+    const unlock = () => {
+      if (this.enabled) {
+        this.ensureCtx();
+        void this.ctx?.resume();
+        this.startCrowd();
+      }
+      window.removeEventListener("pointerdown", unlock);
+    };
+    window.addEventListener("pointerdown", unlock, { passive: true });
   }
 
   /** Backward-compat on/off. Off remembers the last level for restore. */

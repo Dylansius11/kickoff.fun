@@ -19,36 +19,9 @@ import {
 import { MY_TERRACES, YOU } from "./mock";
 import { useFixtures } from "../../lib/use-fixtures";
 import type { FixtureRow } from "../../lib/supabase";
-
-/* 3-letter FIFA-style codes for common WC 2026 teams; fallback = first 3 letters. */
-const COUNTRY_CODE: Record<string, string> = {
-  brazil: "BRA",
-  norway: "NOR",
-  mexico: "MEX",
-  england: "ENG",
-  portugal: "POR",
-  spain: "ESP",
-  argentina: "ARG",
-  france: "FRA",
-  morocco: "MAR",
-  japan: "JPN",
-  usa: "USA",
-  nigeria: "NGA",
-  germany: "GER",
-  netherlands: "NED",
-  italy: "ITA",
-  colombia: "COL",
-  ghana: "GHA",
-  paraguay: "PAR",
-  australia: "AUS",
-  belgium: "BEL",
-  egypt: "EGY",
-  switzerland: "SUI",
-};
-
-function teamCode(name: string): string {
-  return COUNTRY_CODE[name.trim().toLowerCase()] ?? name.trim().slice(0, 3).toUpperCase();
-}
+import { useKickUser } from "../../lib/auth";
+import { teamCode } from "../../lib/team-code";
+import { CreateTerraceSheet } from "./create-terrace";
 
 const kickoffFmt = new Intl.DateTimeFormat(undefined, {
   hour: "2-digit",
@@ -76,11 +49,33 @@ export default function LobbyPage() {
   const router = useRouter();
   const [joining, setJoining] = React.useState(false);
   const [code, setCode] = React.useState("");
+  const [creating, setCreating] = React.useState(false);
+  const [joinBusy, setJoinBusy] = React.useState(false);
+  const [joinError, setJoinError] = React.useState(false);
+  const [shakes, setShakes] = React.useState(0);
   const { fixtures, loading, live } = useFixtures();
+  const { handle, address } = useKickUser();
 
-  const join = () => {
+  const join = async () => {
     const c = code.trim().toUpperCase();
-    if (c.length >= 3) router.push(`/app/terrace/${c}`);
+    if (c.length < 3 || joinBusy) return;
+    setJoinBusy(true);
+    setJoinError(false);
+    try {
+      const res = await fetch(`/api/rooms/${encodeURIComponent(c)}/join`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ handle: handle ?? undefined, wallet: address ?? undefined }),
+      });
+      if (!res.ok) throw new Error(String(res.status));
+      sound.play("kickoff");
+      router.push(`/app/terrace/${c}`);
+    } catch {
+      setJoinError(true);
+      setShakes((s) => s + 1);
+      sound.play("miss");
+      setJoinBusy(false);
+    }
   };
 
   return (
@@ -173,8 +168,8 @@ export default function LobbyPage() {
           size="lg"
           className="w-full"
           onClick={() => {
-            sound.play("kickoff");
-            router.push("/app/terrace/QPR7");
+            sound.play("tap");
+            setCreating(true);
           }}
         >
           <Plus size={18} /> Start a terrace
@@ -199,27 +194,55 @@ export default function LobbyPage() {
               className="overflow-hidden"
             >
               <div className="flex gap-2 pt-1">
-                <Input
-                  autoFocus
-                  value={code}
-                  onChange={(e) => setCode(e.target.value.toUpperCase())}
-                  onKeyDown={(e) => e.key === "Enter" && join()}
-                  placeholder="QPR7"
-                  maxLength={6}
-                  className="font-mono tabular uppercase tracking-[0.3em]"
-                  aria-label="Terrace code"
-                />
-                <Button onClick={join} disabled={code.trim().length < 3} aria-label="Join terrace">
+                <motion.div
+                  key={shakes}
+                  className="flex-1"
+                  animate={shakes > 0 ? { x: [0, -8, 8, -6, 6, -3, 0] } : { x: 0 }}
+                  transition={{ duration: 0.4 }}
+                >
+                  <Input
+                    autoFocus
+                    value={code}
+                    onChange={(e) => {
+                      setCode(e.target.value.toUpperCase());
+                      setJoinError(false);
+                    }}
+                    onKeyDown={(e) => e.key === "Enter" && join()}
+                    placeholder="BRA-7K2"
+                    maxLength={8}
+                    className={
+                      "font-mono tabular uppercase tracking-[0.3em] " +
+                      (joinError ? "border-danger focus:border-danger" : "")
+                    }
+                    aria-label="Terrace code"
+                    aria-invalid={joinError}
+                  />
+                </motion.div>
+                <Button
+                  onClick={join}
+                  loading={joinBusy}
+                  disabled={code.trim().length < 3}
+                  aria-label="Join terrace"
+                >
                   <ArrowRight size={16} />
                 </Button>
               </div>
-              <p className="mt-1.5 text-xs text-text-muted">
-                Ask a mate for their 4-letter code. The terrace is better full.
+              <p className={"mt-1.5 text-xs " + (joinError ? "text-danger" : "text-text-muted")}>
+                {joinError
+                  ? "No terrace answers to that code. Check it with your mate."
+                  : "Ask a mate for their code. The terrace is better full."}
               </p>
             </motion.div>
           )}
         </AnimatePresence>
       </motion.section>
+
+      <CreateTerraceSheet
+        open={creating}
+        onClose={() => setCreating(false)}
+        fixtures={fixtures}
+        loading={loading}
+      />
     </motion.div>
   );
 }
