@@ -1,8 +1,9 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { motion } from "motion/react";
-import { Trophy } from "lucide-react";
+import { ArrowRight, Trophy } from "lucide-react";
 import { Avatar, Card, CountUp, LeaderboardTable, Mono, StatTile, StreakFlame, Tag } from "@kick/ui";
 import { GLOBAL_BOARD } from "../mock";
 
@@ -90,6 +91,19 @@ export default function TablePage() {
         <p className="mt-3 text-center text-xs text-text-muted">
           Every point settled off signed TxLINE data, anchored on Solana.
         </p>
+      </motion.div>
+
+      {/* roadmap tease: the season */}
+      <motion.div variants={item}>
+        <Link href="/app/season" className="block">
+          <Card interactive className="flex items-center justify-between gap-3 px-4 py-3">
+            <div className="flex items-center gap-2.5">
+              <span className="font-display text-sm text-text">THE SEASON</span>
+              <Tag className="text-warn">coming after the Cup</Tag>
+            </div>
+            <ArrowRight size={14} className="text-text-muted" />
+          </Card>
+        </Link>
       </motion.div>
     </motion.div>
   );

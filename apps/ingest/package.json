@@ -9,14 +9,15 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@kick/oracle": "workspace:*",
     "@kick/shared": "workspace:*",
     "@kick/txline-client": "workspace:*",
-    "@kick/oracle": "workspace:*",
+    "@supabase/supabase-js": "^2.110.0",
     "zod": "^3.24.1"
   },
   "devDependencies": {
-    "typescript": "^5.7.2",
     "@types/node": "^22",
-    "tsx": "^4.19.2"
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
   }
 }

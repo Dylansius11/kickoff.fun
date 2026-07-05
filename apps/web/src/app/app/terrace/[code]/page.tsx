@@ -15,6 +15,8 @@ import {
   Scoreboard,
   Tag,
   sound,
+  oracleVoice,
+  useOracleSpeaking,
   type PredictionState,
 } from "@kick/ui";
 import { ORACLE_LINES, ROOM_BOARD } from "../../mock";
@@ -39,6 +41,27 @@ export default function TerracePage() {
   const [clockSec, setClockSec] = React.useState(78 * 60 + 4);
   const [burst, setBurst] = React.useState(0);
   const [oracleLine, setOracleLine] = React.useState(ORACLE_LINES.idle);
+  const oracleSpeaking = useOracleSpeaking();
+
+  // The Gaffer speaks over the tannoy: play toggles voice, wave bars follow.
+  const toggleOracleVoice = React.useCallback(() => {
+    if (oracleVoice.speaking) oracleVoice.stop();
+    else oracleVoice.speak(oracleLine);
+  }, [oracleLine]);
+
+  // Auto-call fresh lines (goal, lock) when sound is up. speak() cancels any
+  // in-flight utterance, so lines never overlap. Skip the idle line on mount.
+  const firstLine = React.useRef(true);
+  React.useEffect(() => {
+    if (firstLine.current) {
+      firstLine.current = false;
+      return;
+    }
+    if (sound.volume > 0) oracleVoice.speak(oracleLine);
+  }, [oracleLine]);
+
+  // Cut the mic when leaving the terrace.
+  React.useEffect(() => () => oracleVoice.stop(), []);
 
   // open card: pick + draining lock window
   const [pick, setPick] = React.useState<string | null>(null);
@@ -170,7 +193,13 @@ export default function TerracePage() {
           >
             {tab === "PREDICT" && (
               <>
-                <OracleBubble persona="THE GAFFER" line={oracleLine} speaking />
+                <OracleBubble
+                  persona="THE GAFFER"
+                  line={oracleLine}
+                  speaking={oracleSpeaking}
+                  speakable
+                  onSpeak={toggleOracleVoice}
+                />
 
                 <PredictionCard
                   prompt="NEXT GOAL?"
@@ -219,7 +248,13 @@ export default function TerracePage() {
 
             {tab === "ORACLE" && (
               <>
-                <OracleBubble persona="THE GAFFER" line={oracleLine} speaking />
+                <OracleBubble
+                  persona="THE GAFFER"
+                  line={oracleLine}
+                  speaking={oracleSpeaking}
+                  speakable
+                  onSpeak={toggleOracleVoice}
+                />
                 <OracleBubble
                   persona="THE GAFFER"
                   line="VAR had a look at that tackle. Points frozen till it's final, that's the rule."

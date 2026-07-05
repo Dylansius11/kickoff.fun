@@ -1,5 +1,6 @@
 "use client";
 
+import * as React from "react";
 import { useRef, useState } from "react";
 import Link from "next/link";
 import {
@@ -23,8 +24,89 @@ import {
   PixelBurst,
   BallMascot,
   VolumeControl,
+  CountUp,
   useSound,
 } from "@kick/ui";
+
+/* ── PitchBackdrop ── a chalk-lined pitch receding to the horizon, pure CSS 3D. */
+function PitchBackdrop() {
+  return (
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 -z-10 h-[62%] overflow-hidden" aria-hidden>
+      <div
+        className="absolute inset-x-[-40%] bottom-[-12%] top-0"
+        style={{
+          transform: "perspective(520px) rotateX(58deg)",
+          transformOrigin: "50% 100%",
+          backgroundImage:
+            "repeating-linear-gradient(0deg, rgba(34,197,94,0.16) 0 2px, transparent 2px 56px), repeating-linear-gradient(90deg, rgba(34,197,94,0.10) 0 2px, transparent 2px 88px)",
+          maskImage: "linear-gradient(to top, rgba(0,0,0,0.75), transparent 85%)",
+          WebkitMaskImage: "linear-gradient(to top, rgba(0,0,0,0.75), transparent 85%)",
+        }}
+      />
+      {/* centre circle */}
+      <div
+        className="absolute bottom-[-6%] left-1/2 h-40 w-[380px] -translate-x-1/2 rounded-[50%] border-2 border-pitch/25"
+        style={{ maskImage: "linear-gradient(to top, black 55%, transparent)" }}
+      />
+    </div>
+  );
+}
+
+/* ── Magnetic ── the CTA leans toward the cursor, snaps back on leave. */
+function Magnetic({ children }: { children: React.ReactNode }) {
+  const reduce = useReducedMotion();
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+  const sx2 = useSpring(x, { stiffness: 300, damping: 20 });
+  const sy2 = useSpring(y, { stiffness: 300, damping: 20 });
+  if (reduce) return <>{children}</>;
+  return (
+    <motion.div
+      style={{ x: sx2, y: sy2 }}
+      onPointerMove={(e) => {
+        const r = e.currentTarget.getBoundingClientRect();
+        x.set(((e.clientX - r.left) / r.width - 0.5) * 14);
+        y.set(((e.clientY - r.top) / r.height - 0.5) * 10);
+      }}
+      onPointerLeave={() => {
+        x.set(0);
+        y.set(0);
+      }}
+      className="inline-block"
+    >
+      {children}
+    </motion.div>
+  );
+}
+
+/* ── word-by-word headline reveal ── */
+function Headline() {
+  const words: { t: string; cls?: string; br?: boolean }[] = [
+    { t: "CALL" },
+    { t: "IT", br: true },
+    { t: "BEFORE", br: true },
+    { t: "THE" },
+    { t: "REF", cls: "animate-flicker text-win" },
+    { t: "DOES" },
+  ];
+  return (
+    <h1 className="mt-4 font-display text-5xl leading-[0.95] text-text sm:text-7xl">
+      {words.map((w, i) => (
+        <React.Fragment key={i}>
+          <motion.span
+            className={`inline-block ${w.cls ?? ""}`}
+            initial={{ opacity: 0, y: 34, rotate: i % 2 ? 2 : -2 }}
+            animate={{ opacity: 1, y: 0, rotate: 0 }}
+            transition={{ type: "spring", stiffness: 300, damping: 22, delay: 0.08 + i * 0.07 }}
+          >
+            {w.t}
+          </motion.span>
+          {w.br ? <br /> : " "}
+        </React.Fragment>
+      ))}
+    </h1>
+  );
+}
 
 /* ── the landing page ── web-scale, floodlit, cursor-reactive.
    "Launch app" drops into the mobile-format product at /app. */
@@ -115,6 +197,7 @@ export default function Landing() {
   /* hero scoreboard easter egg */
   const [score, setScore] = useState(1);
   const [burst, setBurst] = useState(0);
+  const [kick, setKick] = useState(0);
   const heroRef = useRef<HTMLDivElement>(null);
 
   /* parallax on scroll */
@@ -179,6 +262,8 @@ export default function Landing() {
           className="pointer-events-none absolute inset-0 -z-10"
           style={{ background: "radial-gradient(90% 60% at 50% -10%, rgba(34,197,94,0.14), transparent 70%)" }}
         />
+        {/* chalk pitch receding to the horizon */}
+        <PitchBackdrop />
 
         <div className="mx-auto grid max-w-6xl items-center gap-10 px-5 pb-20 pt-16 md:grid-cols-[1.15fr_0.85fr] md:pb-28 md:pt-24">
           <div>
@@ -190,18 +275,7 @@ export default function Landing() {
               <LiveDot label="WORLD CUP 2026 · LIVE" />
             </motion.div>
 
-            <motion.h1
-              initial={{ opacity: 0, y: 26 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ type: "spring", stiffness: 240, damping: 26, delay: 0.08 }}
-              className="mt-4 font-display text-5xl leading-[0.95] text-text sm:text-7xl"
-            >
-              CALL IT
-              <br />
-              BEFORE
-              <br />
-              THE <span className="text-win">REF</span> DOES
-            </motion.h1>
+            <Headline />
 
             <motion.p
               initial={{ opacity: 0, y: 22 }}
@@ -219,16 +293,39 @@ export default function Landing() {
               transition={{ type: "spring", stiffness: 240, damping: 26, delay: 0.28 }}
               className="mt-8 flex flex-wrap items-center gap-3"
             >
-              <Link href="/app">
-                <Button size="lg">
-                  Launch app <ArrowRight size={16} />
-                </Button>
-              </Link>
+              <Magnetic>
+                <Link href="/app">
+                  <Button size="lg">
+                    Launch app <ArrowRight size={16} />
+                  </Button>
+                </Link>
+              </Magnetic>
               <Link href="/system">
                 <Button variant="secondary" size="lg">
                   See the system
                 </Button>
               </Link>
+            </motion.div>
+
+            {/* receipts strip: the numbers that matter, rolling in */}
+            <motion.div
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.55, type: "spring", stiffness: 240, damping: 26 }}
+              className="mt-10 flex max-w-md items-stretch divide-x divide-border border-y border-border"
+            >
+              {(
+                [
+                  [60, "s", "SIGNED DATA LAG"],
+                  [0, "", "SEED PHRASES"],
+                  [100, "%", "ON-CHAIN RECEIPTS"],
+                ] as const
+              ).map(([n, suffix, label]) => (
+                <div key={label} className="flex-1 px-4 py-3">
+                  <CountUp to={n} suffix={suffix} duration={1.6} className="font-display text-2xl text-win" />
+                  <div className="mt-0.5 font-mono text-[10px] uppercase tracking-wider text-text-muted">{label}</div>
+                </div>
+              ))}
             </motion.div>
 
             <motion.div
@@ -252,7 +349,33 @@ export default function Landing() {
               animate={{ opacity: 1, scale: 1 }}
               transition={{ type: "spring", stiffness: 200, damping: 20, delay: 0.2 }}
             >
-              <BallMascot size={190} track shades dropShades className="drop-shadow-[0_0_50px_rgba(34,197,94,0.3)]" />
+              {/* the ball is kickable: boot it and it backflips with a whistle */}
+              <motion.button
+                type="button"
+                aria-label="Kick the ball"
+                key={kick}
+                onClick={() => {
+                  setKick((k) => k + 1);
+                  setBurst((b) => b + 1);
+                  play("kickoff");
+                }}
+                animate={
+                  reduce || kick === 0
+                    ? undefined
+                    : {
+                        y: [0, -130, 0, -26, 0],
+                        rotate: [0, 380, 720, 720, 720],
+                        scaleY: [1, 1.06, 0.82, 1.04, 1],
+                      }
+                }
+                transition={{ duration: 1.05, ease: [0.22, 0.9, 0.3, 1], times: [0, 0.4, 0.72, 0.86, 1] }}
+                className="cursor-pointer select-none border-0 bg-transparent p-0 outline-none focus-visible:ring-2 focus-visible:ring-pitch"
+              >
+                <BallMascot size={190} track shades dropShades className="drop-shadow-[0_0_50px_rgba(34,197,94,0.3)]" />
+              </motion.button>
+              <div className="mt-1 text-center font-mono text-[10px] uppercase tracking-widest text-text-muted">
+                [ kick him ]
+              </div>
             </motion.div>
             <motion.div
               initial={{ opacity: 0, y: 18 }}

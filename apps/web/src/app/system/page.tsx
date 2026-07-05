@@ -24,6 +24,7 @@ import {
   VolumeControl,
   FullTimeScreen,
   useSound,
+  BallMascot,
 } from "@kick/ui";
 
 function Swatch({ name, hex }: { name: string; hex: string }) {
@@ -120,7 +121,7 @@ export default function Page() {
             <div className="font-display text-3xl text-text">GOAL 90+3</div>
           </div>
           <div className="rounded-card border-2 border-border-strong bg-surface-2 p-4">
-            <Mono className="mb-1 block text-xs uppercase text-text-muted">Data · JetBrains Mono (target: Departure Mono)</Mono>
+            <Mono className="mb-1 block text-xs uppercase text-text-muted">Data · Departure Mono</Mono>
             <Mono className="text-2xl font-bold text-text">2–1 · 1.85 · +50 · 9Exb…cKaA</Mono>
           </div>
           <div className="rounded-card border-2 border-border-strong bg-surface-2 p-4">
@@ -275,7 +276,28 @@ export default function Page() {
         </div>
       </Section>
 
-      <Section eyebrow="10 · SYSTEM" title="Feedback">
+      <Section eyebrow="10 · MASCOT" title="One ball, many moods">
+        <p className="mb-6 max-w-lg text-sm text-text-muted">
+          Every accessory is drawn SVG on the logo, zero image assets. Shades for the
+          winner&apos;s flex, crown for the champion, flat cap for the Gaffer persona.
+        </p>
+        <div className="flex flex-wrap items-end gap-10">
+          {(
+            [
+              ["shades", "THE FLEX"],
+              ["crown", "THE CHAMPION"],
+              ["cap", "THE GAFFER"],
+            ] as const
+          ).map(([acc, label]) => (
+            <div key={acc} className="flex flex-col items-center gap-3">
+              <BallMascot size={110} accessory={acc} />
+              <Mono className="text-xs uppercase tracking-widest text-text-muted">{label}</Mono>
+            </div>
+          ))}
+        </div>
+      </Section>
+
+      <Section eyebrow="11 · SYSTEM" title="Feedback">
         <div className="max-w-md space-y-2">
           <Toast tone="win">You called it. +50 points, top of the terrace.</Toast>
           <Toast tone="warn">VAR check. Points held until the call is final.</Toast>

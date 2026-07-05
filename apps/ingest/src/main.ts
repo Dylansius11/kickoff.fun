@@ -2,18 +2,27 @@
    The engine: TxLINE in, normalized events + Oracle lines out.
    MVP loop (poll-based; SSE swap-in once stream paths are confirmed):
      fixtures -> pick active/next fixture -> poll scores snapshot ->
-     normalize -> diff -> finality gate -> oracle line -> stdout
-   Supabase publishing lands when the schema is applied (see supabase/).
+     normalize -> diff -> finality gate -> oracle line -> Supabase + stdout
+   Persistence (apps/ingest/src/db.ts): fixtures upsert on boot, snapshot +
+   status per poll, oracle_events fan-out per line. All writes are
+   fire-and-forget; a Supabase outage never stalls the poll loop.
 
-   Run: TXLINE_JWT=... TXLINE_API_TOKEN=... pnpm --filter @kick/ingest dev
-   (JWT optional: worker acquires a fresh guest JWT if missing.) */
+   Run: pnpm --filter @kick/ingest dev
+   (env auto-loads from the repo-root .env; TXLINE_JWT optional, the worker
+   acquires a fresh guest JWT if missing. INGEST_MAX_TICKS=N exits after N
+   polls, for smoke tests.) */
+
+import { loadRootEnv } from "./env.js";
+loadRootEnv();
 
 import { TxLineClient } from "@kick/txline-client";
 import { diffStates, judge, type Candidate, type MatchEvent, type MatchState } from "@kick/shared";
 import { speak } from "@kick/oracle";
+import { insertOracleEvent, updateFixtureSnapshot, upsertFixtures, type TxLineFixtureRow } from "./db.js";
 
 const BASE = process.env.TXLINE_BASE_URL ?? "https://txline-dev.txodds.com";
 const POLL_MS = Number(process.env.INGEST_POLL_MS ?? 15_000);
+const MAX_TICKS = Number(process.env.INGEST_MAX_TICKS ?? 0); // 0 = run forever
 
 const client = new TxLineClient({
   baseUrl: BASE,
@@ -21,20 +30,10 @@ const client = new TxLineClient({
   apiToken: process.env.TXLINE_API_TOKEN,
 });
 
-/* TxLINE fixture snapshot row (fields observed live, July 4 2026). */
-interface FixtureRow {
-  FixtureId: number;
-  Participant1: string;
-  Participant2: string;
-  Participant1IsHome: boolean;
-  StartTime: number;
-  Competition: string;
-}
-
 /* Normalize a raw TxLINE scores snapshot into our MatchState.
    NOTE: exact scores payload shape lands after the first live pull; the
    mapper is isolated here so fixing it is a one-function change. */
-function normalize(fix: FixtureRow, raw: unknown, asOf: number): MatchState {
+function normalize(fix: TxLineFixtureRow, raw: unknown, asOf: number): MatchState {
   const r = (raw ?? {}) as Record<string, unknown>;
   const num = (k: string) => (typeof r[k] === "number" ? (r[k] as number) : 0);
   return {
@@ -50,6 +49,11 @@ function normalize(fix: FixtureRow, raw: unknown, asOf: number): MatchState {
   };
 }
 
+/* Fire-and-forget persistence: log, never throw, never await in the loop. */
+function persist<T>(label: string, p: Promise<T>): void {
+  p.catch((err: unknown) => console.error(`[db] ${label} rejected:`, err instanceof Error ? err.message : err));
+}
+
 async function main() {
   if (!client["jwt" as never]) {
     await client.startGuestSession();
@@ -57,8 +61,11 @@ async function main() {
   }
   console.log(`[ingest] up against ${BASE}, poll every ${POLL_MS}ms`);
 
-  const fixtures = (await client.fixtures({ startEpochDay: epochDayToday() })) as FixtureRow[];
+  const fixtures = (await client.fixtures({ startEpochDay: epochDayToday() })) as TxLineFixtureRow[];
   console.log(`[fixtures] ${fixtures.length} World Cup fixtures loaded`);
+  const written = await upsertFixtures(fixtures);
+  if (written > 0) console.log(`[db] ${written} fixtures upserted`);
+
   const target = fixtures.sort((a, b) => a.StartTime - b.StartTime)[0];
   if (!target) throw new Error("no fixtures returned");
   console.log(`[watch] ${target.Participant1} v ${target.Participant2} (fixture ${target.FixtureId})`);
@@ -67,11 +74,13 @@ async function main() {
   const pending: Candidate[] = [];
   const history: MatchEvent[] = [];
 
-  for (;;) {
+  for (let tick = 1; ; tick++) {
     try {
       const now = Date.now();
       const raw = await client.scoresSnapshot(target.FixtureId);
       const state = normalize(target, raw, now);
+
+      persist(`updateFixtureSnapshot(${target.FixtureId})`, updateFixtureSnapshot(target.FixtureId, state));
 
       if (prev) {
         for (const ev of diffStates(prev, state)) {
@@ -79,7 +88,10 @@ async function main() {
           console.log(`[event] ${ev.type} ${ev.side ?? ""}`);
           if (ev.type === "goal") pending.push({ key: `goal:${ev.side}:${now}`, event: ev, seenAt: now });
           const line = speak(ev, { homeTeam: state.home, awayTeam: state.away });
-          if (line) console.log(`[oracle:${line.persona}] ${line.text}`);
+          if (line) {
+            console.log(`[oracle:${line.persona}] ${line.text}`);
+            persist("insertOracleEvent", insertOracleEvent(target.FixtureId, ev.type, line.text));
+          }
         }
       }
 
@@ -90,8 +102,12 @@ async function main() {
           console.log(`[finality] ${pending[i]!.key} -> ${verdict}`);
           if (verdict === "final") {
             const line = speak({ type: "settlement", asOf: now });
-            if (line) console.log(`[oracle] ${line.text}`);
-            // TODO: submit settle_room via program client + write Supabase
+            if (line) {
+              console.log(`[oracle] ${line.text}`);
+              persist("insertOracleEvent", insertOracleEvent(target.FixtureId, "settlement", line.text));
+            }
+            // TODO: submit settle_room via program client; settleProp/awardPoints
+            // (props, picks, points_ledger) land with the props engine.
           }
           pending.splice(i, 1);
         }
@@ -100,6 +116,10 @@ async function main() {
       prev = state;
     } catch (err) {
       console.error("[poll error]", err instanceof Error ? err.message : err);
+    }
+    if (MAX_TICKS > 0 && tick >= MAX_TICKS) {
+      console.log(`[ingest] INGEST_MAX_TICKS=${MAX_TICKS} reached, exiting`);
+      return;
     }
     await new Promise((r) => setTimeout(r, POLL_MS));
   }

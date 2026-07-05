@@ -2,9 +2,10 @@
 
 import * as React from "react";
 import { motion } from "motion/react";
-import { Lock, Check } from "lucide-react";
-import { Avatar, Card, CountUp, Mono, StreakFlame, Tag } from "@kick/ui";
+import { Lock, Check, Wallet, LogOut, LogIn } from "lucide-react";
+import { Avatar, Card, CountUp, Mono, StreakFlame, Tag, Button } from "@kick/ui";
 import { COSMETICS, YOU, type Cosmetic } from "../mock";
+import { useKickUser, shortAddress } from "@/lib/auth";
 
 const container = {
   hidden: {},
@@ -62,6 +63,8 @@ function CosmeticCard({ c }: { c: Cosmetic }) {
 }
 
 export default function LockerPage() {
+  const { ready, authenticated, handle, address, login, logout } = useKickUser();
+  const name = authenticated && handle ? handle : YOU;
   return (
     <motion.div
       variants={container}
@@ -71,10 +74,10 @@ export default function LockerPage() {
     >
       {/* profile header */}
       <motion.div variants={item} className="flex items-center gap-4">
-        <Avatar name={YOU} size={64} className="border-2 border-pitch-700 text-lg" />
+        <Avatar name={name} size={64} className="border-2 border-pitch-700 text-lg" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
-            <h1 className="truncate font-display text-2xl leading-tight text-text">{YOU}</h1>
+            <h1 className="truncate font-display text-2xl leading-tight text-text">{name}</h1>
             <StreakFlame count={4} />
           </div>
           <div className="mt-0.5 flex items-baseline gap-1.5">
@@ -86,6 +89,45 @@ export default function LockerPage() {
           <Mono className="block text-lg font-bold text-text">#3</Mono>
           <Tag className="text-text-muted">GLOBAL</Tag>
         </div>
+      </motion.div>
+
+      {/* wallet identity: Privy embedded Solana wallet, the on-chain you */}
+      <motion.div variants={item}>
+        <Card className="flex items-center justify-between px-4 py-3">
+          <div className="flex min-w-0 items-center gap-3">
+            <span
+              className={
+                "flex h-9 w-9 shrink-0 items-center justify-center rounded-card border-2 " +
+                (authenticated ? "border-pitch-700 bg-pitch/10 text-win" : "border-border-strong bg-surface text-text-muted")
+              }
+            >
+              <Wallet size={16} />
+            </span>
+            <div className="min-w-0">
+              <Tag className="text-text-muted">SOLANA WALLET</Tag>
+              {authenticated && address ? (
+                <Mono className="block truncate text-sm text-text">{shortAddress(address)}</Mono>
+              ) : (
+                <div className="text-sm text-text-dim">Sign in, wallet appears. No seed phrase.</div>
+              )}
+            </div>
+          </div>
+          {ready &&
+            (authenticated ? (
+              <button
+                type="button"
+                onClick={() => void logout()}
+                aria-label="Sign out"
+                className="inline-flex h-9 w-9 items-center justify-center rounded-card border-2 border-border-strong text-text-muted transition-colors hover:border-danger/60 hover:text-danger"
+              >
+                <LogOut size={15} />
+              </button>
+            ) : (
+              <Button size="sm" onClick={login}>
+                <LogIn size={13} /> Sign in
+              </Button>
+            ))}
+        </Card>
       </motion.div>
 
       {/* form strip */}

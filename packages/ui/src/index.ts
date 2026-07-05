@@ -8,3 +8,4 @@ export * from "./components/volume";
 export * from "./components/mascot";
 export * from "./components/celebration";
 export { sound, type SfxName } from "./sound";
+export { oracleVoice, useOracleSpeaking } from "./speech";

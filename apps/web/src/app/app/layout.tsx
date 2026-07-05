@@ -4,8 +4,9 @@ import * as React from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Home, Ticket, Trophy, Shirt } from "lucide-react";
-import { BottomNav, Mono, VolumeControl } from "@kick/ui";
+import { Home, Ticket, Trophy, Shirt, LogIn } from "lucide-react";
+import { BottomNav, Mono, VolumeControl, Avatar } from "@kick/ui";
+import { KickAuthProvider, useKickUser } from "@/lib/auth";
 
 const NAV = [
   { key: "pitch", label: "PITCH", icon: Home, href: "/app" },
@@ -21,7 +22,37 @@ function activeKey(pathname: string) {
   return "pitch";
 }
 
+function AuthChip() {
+  const { ready, authenticated, handle, login } = useKickUser();
+  const router = useRouter();
+  if (!ready) return <div className="h-8 w-8 rounded-full border border-border bg-surface-2" />;
+  if (!authenticated) {
+    return (
+      <button
+        type="button"
+        onClick={login}
+        className="inline-flex h-8 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full border-2 border-pitch-700 bg-pitch/10 px-2.5 font-display text-[10px] tracking-wide text-win transition-colors hover:bg-pitch/20"
+      >
+        <LogIn size={12} /> SIGN IN
+      </button>
+    );
+  }
+  return (
+    <button type="button" onClick={() => router.push("/app/locker")} aria-label="Your locker">
+      <Avatar name={handle ?? "?"} size={30} className="border-pitch-700" />
+    </button>
+  );
+}
+
 export default function AppShellLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <KickAuthProvider>
+      <AppShell>{children}</AppShell>
+    </KickAuthProvider>
+  );
+}
+
+function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const active = activeKey(pathname);
@@ -34,12 +65,13 @@ export default function AppShellLayout({ children }: { children: React.ReactNode
           <Image src="/logo.svg" alt="" width={26} height={26} priority />
           <span className="font-display text-base tracking-tight text-text">KICK.FUN</span>
         </Link>
-        <div className="flex items-center gap-2">
-          <span className="inline-flex items-center gap-1.5 rounded-full border border-pitch-700 bg-pitch/10 px-2.5 py-1">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span className="inline-flex shrink-0 items-center gap-1 rounded-full border border-pitch-700 bg-pitch/10 px-2 py-1">
             <Mono className="text-xs font-bold text-win">11,205</Mono>
-            <span className="font-display text-[10px] text-text-muted">PTS</span>
+            <span className="hidden font-display text-[10px] text-text-muted min-[380px]:inline">PTS</span>
           </span>
-          <VolumeControl />
+          <VolumeControl compact />
+          <AuthChip />
         </div>
       </header>
 

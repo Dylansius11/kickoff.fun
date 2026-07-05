@@ -180,7 +180,7 @@ export function ShareCard({ data, className }: { data: ShareCardData; className?
                 style={{ background: "radial-gradient(circle, rgba(34,197,94,0.3), transparent 70%)" }}
               />
             )}
-            <BallMascot size={88} shades={podium} dropShades />
+            <BallMascot size={88} accessory={data.rank === 1 ? "crown" : podium ? "shades" : "none"} dropShades />
           </div>
           <Mono className="mt-3 text-xs uppercase tracking-widest text-text-muted">{data.fixture}</Mono>
           <div className="font-display text-5xl leading-none text-text">{data.score}</div>

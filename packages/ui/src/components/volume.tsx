@@ -26,9 +26,10 @@ const HEIGHTS = [0.35, 0.5, 0.62, 0.75, 0.88, 1, 0.9, 0.74, 0.58, 0.42];
  * Touch-first: no hover dependency, big hit target, pointer capture so the
  * drag never drops. First interaction unlocks the AudioContext + crowd bed.
  */
-export function VolumeControl({ className }: { className?: string }) {
+export function VolumeControl({ className, compact = false }: { className?: string; compact?: boolean }) {
   const volume = useVolume();
   const reduce = useReducedMotion();
+  const bars = compact ? HEIGHTS.filter((_, i) => i % 2 === 0) : HEIGHTS; // 5 bars in compact
   const trackRef = React.useRef<HTMLDivElement>(null);
   const dragging = React.useRef(false);
   const startedCrowd = React.useRef(false);
@@ -95,7 +96,8 @@ export function VolumeControl({ className }: { className?: string }) {
   return (
     <div
       className={cn(
-        "inline-flex h-10 items-center gap-0.5 rounded-card border-2 bg-surface-2 pl-0.5 pr-2 transition-colors",
+        "inline-flex items-center rounded-card border-2 bg-surface-2 transition-colors",
+        compact ? "h-8 gap-0 pl-0 pr-1" : "h-10 gap-0.5 pl-0.5 pr-2",
         muted ? "border-border-strong" : "border-pitch-700",
         className,
       )}
@@ -105,11 +107,12 @@ export function VolumeControl({ className }: { className?: string }) {
         onClick={toggleMute}
         aria-label={muted ? "Unmute" : "Mute"}
         className={cn(
-          "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-[3px] transition-colors",
+          "inline-flex shrink-0 items-center justify-center rounded-[3px] transition-colors",
+          compact ? "h-7 w-7" : "h-8 w-8",
           muted ? "text-text-muted hover:text-text-dim" : "text-win",
         )}
       >
-        <Icon size={15} />
+        <Icon size={compact ? 13 : 15} />
       </button>
 
       <div
@@ -126,11 +129,14 @@ export function VolumeControl({ className }: { className?: string }) {
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
         onKeyDown={onKeyDown}
-        className="flex h-8 w-[104px] cursor-ew-resize touch-none select-none items-end gap-[3px] rounded-[3px] px-1 pb-1 pt-1.5 outline-none focus-visible:ring-2 focus-visible:ring-pitch"
+        className={cn(
+          "flex cursor-ew-resize touch-none select-none items-end rounded-[3px] px-1 pb-1 pt-1.5 outline-none focus-visible:ring-2 focus-visible:ring-pitch",
+          compact ? "h-7 w-[52px] gap-[2px]" : "h-8 w-[104px] gap-[3px]",
+        )}
       >
-        {HEIGHTS.map((h, i) => {
+        {bars.map((h, i) => {
           // fractional fill: bar i lights from its own share of the range
-          const fill = Math.max(0, Math.min(1, volume * BARS - i));
+          const fill = Math.max(0, Math.min(1, volume * bars.length - i));
           const lit = fill > 0.02;
           return (
             <div key={i} className="relative h-full w-full">

@@ -1,9 +1,11 @@
 "use client";
 
 import * as React from "react";
-import { Flame, Copy, Check, Volume2 } from "lucide-react";
+import { motion } from "motion/react";
+import { Flame, Copy, Check, Play, Square } from "lucide-react";
 import { cn } from "../lib/utils";
 import { Card, Mono, Avatar } from "./primitives";
+import { BallMascot } from "./mascot";
 
 /* ── StreakFlame ── the arcade dopamine badge */
 export function StreakFlame({ count, className }: { count: number; className?: string }) {
@@ -70,39 +72,69 @@ export function LeaderboardTable({
   );
 }
 
-/* ── OracleBubble ── the pundit presence */
+/* ── OracleBubble ── the pundit presence. The Gaffer wears the coach headset
+   (BallMascot accessory="cap") and, when `speakable`, carries a play/stop
+   toggle. Voice itself lives with the consumer: the button only fires
+   `onSpeak`; `speaking` drives the wave bars. */
 export function OracleBubble({
   persona,
   line,
   speaking = false,
+  speakable = false,
+  onSpeak,
 }: {
   persona: string;
   line: string;
   speaking?: boolean;
+  /** Show the voice toggle. The consumer wires actual TTS via `onSpeak`. */
+  speakable?: boolean;
+  onSpeak?: () => void;
 }) {
   return (
-    <Card className="flex items-start gap-3 px-4 py-3">
-      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border-2 border-pitch-700 bg-pitch/15 text-win">
-        <Volume2 size={16} />
-      </div>
-      <div className="min-w-0 flex-1">
-        <div className="mb-1 flex items-center gap-2">
-          <span className="font-display text-xs text-pitch">{persona}</span>
-          {speaking && (
-            <span className="flex items-end gap-0.5" aria-label="speaking">
-              {[0, 1, 2, 3].map((i) => (
-                <span
-                  key={i}
-                  className="wave-bar w-0.5 rounded-full bg-win"
-                  style={{ animationDelay: `${i * 120}ms` }}
-                />
-              ))}
-            </span>
-          )}
+    <motion.div
+      initial={{ opacity: 0, y: 8, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      transition={{ type: "spring", stiffness: 380, damping: 28 }}
+    >
+      <Card className="flex items-start gap-3 border-l-4 border-l-pitch px-4 py-3">
+        <div className="-my-0.5 shrink-0">
+          <BallMascot accessory="cap" size={40} />
         </div>
-        <p className="text-sm text-text">{line}</p>
-      </div>
-    </Card>
+        <div className="min-w-0 flex-1">
+          <div className="mb-1 flex items-center gap-2">
+            <span className="font-display text-xs text-pitch">{persona}</span>
+            {speaking && (
+              <span className="flex items-end gap-0.5" aria-label="speaking">
+                {[0, 1, 2, 3].map((i) => (
+                  <span
+                    key={i}
+                    className="wave-bar w-0.5 rounded-full bg-win"
+                    style={{ animationDelay: `${i * 120}ms` }}
+                  />
+                ))}
+              </span>
+            )}
+            {speakable && (
+              <button
+                type="button"
+                onClick={onSpeak}
+                aria-label={speaking ? "Stop voice" : "Hear the call"}
+                aria-pressed={speaking}
+                className={cn(
+                  "ml-auto flex h-6 w-6 shrink-0 items-center justify-center rounded-full border transition-colors",
+                  speaking
+                    ? "border-win/60 bg-win/15 text-win"
+                    : "border-border-strong bg-surface-2 text-text-muted hover:border-pitch-700 hover:text-win",
+                )}
+              >
+                {speaking ? <Square size={12} fill="currentColor" /> : <Play size={12} fill="currentColor" />}
+              </button>
+            )}
+          </div>
+          <p className="text-sm text-text">{line}</p>
+        </div>
+      </Card>
+    </motion.div>
   );
 }
 

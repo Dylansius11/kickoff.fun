@@ -42,6 +42,8 @@ Full context lives in docs. Read before building in that area:
 
 Append here the moment a mistake is caught or a preference is stated, so it is never repeated. Format: `- [YYYY-MM-DD] Observation. → Rule going forward.` Newest at top. Both the user and any agent may add entries. Re-read this list before starting work.
 
+- [2026-07-06] Next.js only loads `.env` from the app dir (`apps/web/`), not the monorepo root; `NEXT_PUBLIC_*` silently came out undefined at build. → `apps/web/.env.local` is a symlink to the root `.env` (gitignored); check env inlining first when a provider "isn't mounted".
+- [2026-07-06] Privy `@privy-io/react-auth@3.33` peers: needs `@solana/kit@^6.5` + `@solana-program/{memo,system,token}`; kit v7 breaks token 0.14 (missing `getMinimumBalanceForRentExemption`). → Pin kit 6.x in apps/web until the ecosystem catches up.
 - [2026-07-04] VolumeControl v1 expanded on hover only (dead on touch) and animated its width mid-drag (janky). → Primary controls never hide behind hover; touch-first, pointer capture, no layout animation under an active pointer.
 - [2026-07-04] ShareCard v1 hard-locked `aspect-ratio: 4/5` and content overflowed/clipped ("bertabrakan"). → Never fix an aspect ratio on a text-bearing card; let content set height.
 - [2026-07-04] User: the share platform is X. → Share actions open `https://x.com/intent/post?text=` composer, X glyph on the button, not generic navigator.share.
@@ -58,7 +60,7 @@ Append here the moment a mistake is caught or a preference is stated, so it is n
 - [2026-07-04] `next/font` CSS variable names must differ from the Tailwind `@theme` utility names, or you get a `var()` self-reference. → Name font vars `--font-pixelify/grotesk/jetbrains`, map them to `--font-display/sans/mono` in `@theme`.
 - [2026-07-04] User's `public/logo-word.svg` is black text on transparent (invisible on the dark floodlit background). → Need a chalk/light wordmark variant; until then render "KICK.FUN" in the Pixelify font next to the ball mark.
 - [2026-07-04] pnpm 11 rewrites `pnpm-workspace.yaml` with an `allowBuilds` placeholder after install. → Resolve placeholders to explicit `true`/`false` so the file stays valid.
-- [2026-07-04] Mono font is interim (JetBrains Mono). → Target is self-hosted **Departure Mono** (pixel-mono, OFL); swap when the font file is added.
+- [2026-07-04] Mono font is interim (JetBrains Mono). → RESOLVED 2026-07-06: self-hosted **Departure Mono** (pixel-mono, OFL) now loaded via next/font/local (`--font-departure`); JetBrains Mono removed.
 
 ---
 
@@ -66,5 +68,4 @@ Append here the moment a mistake is caught or a preference is stated, so it is n
 
 - TxLINE proof format unconfirmed (Merkle vs ed25519) → gates the Anchor design. See `INTEGRATIONS.md §1.6`.
 - Anchor program (`programs/kick-settlement`) intentionally deferred by user.
-- Departure Mono font file not yet added.
 - Chalk wordmark asset not yet produced.

@@ -12,10 +12,56 @@ import {
   LiveDot,
   MatchCard,
   Mono,
+  Skeleton,
   Tag,
   sound,
 } from "@kick/ui";
-import { FIXTURES, MY_TERRACES, YOU } from "./mock";
+import { MY_TERRACES, YOU } from "./mock";
+import { useFixtures } from "../../lib/use-fixtures";
+import type { FixtureRow } from "../../lib/supabase";
+
+/* 3-letter FIFA-style codes for common WC 2026 teams; fallback = first 3 letters. */
+const COUNTRY_CODE: Record<string, string> = {
+  brazil: "BRA",
+  norway: "NOR",
+  mexico: "MEX",
+  england: "ENG",
+  portugal: "POR",
+  spain: "ESP",
+  argentina: "ARG",
+  france: "FRA",
+  morocco: "MAR",
+  japan: "JPN",
+  usa: "USA",
+  nigeria: "NGA",
+  germany: "GER",
+  netherlands: "NED",
+  italy: "ITA",
+  colombia: "COL",
+  ghana: "GHA",
+  paraguay: "PAR",
+  australia: "AUS",
+  belgium: "BEL",
+  egypt: "EGY",
+  switzerland: "SUI",
+};
+
+function teamCode(name: string): string {
+  return COUNTRY_CODE[name.trim().toLowerCase()] ?? name.trim().slice(0, 3).toUpperCase();
+}
+
+const kickoffFmt = new Intl.DateTimeFormat(undefined, {
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+function kickoffLabel(f: FixtureRow): string {
+  if (f.status === "live") return "LIVE";
+  if (f.status === "final") return "FT";
+  const t = Date.parse(f.kickoff_at);
+  return Number.isNaN(t) ? "TBD" : kickoffFmt.format(t);
+}
 
 const container = {
   hidden: {},
@@ -30,10 +76,7 @@ export default function LobbyPage() {
   const router = useRouter();
   const [joining, setJoining] = React.useState(false);
   const [code, setCode] = React.useState("");
-
-  const liveFirst = [...FIXTURES].sort(
-    (a, b) => Number(b.status === "live") - Number(a.status === "live"),
-  );
+  const { fixtures, loading, live } = useFixtures();
 
   const join = () => {
     const c = code.trim().toUpperCase();
@@ -98,16 +141,30 @@ export default function LobbyPage() {
           <span className="font-display text-sm text-text">TONIGHT&apos;S FIXTURES</span>
           <Tag className="text-text-muted">ROUND OF 16</Tag>
         </div>
-        {liveFirst.map((f) => (
-          <MatchCard
-            key={`${f.home}-${f.away}`}
-            home={f.home}
-            away={f.away}
-            kickoff={f.kickoff}
-            status={f.status}
-            onClick={() => router.push("/app/terrace/QPR7")}
-          />
-        ))}
+        {!loading && (
+          <div className="flex items-center gap-1.5">
+            {live ? (
+              <>
+                <LiveDot />
+                <Mono className="text-[10px] tracking-widest text-text-dim">TXLINE FEED</Mono>
+              </>
+            ) : (
+              <Tag className="text-text-muted">DEMO DATA</Tag>
+            )}
+          </div>
+        )}
+        {loading
+          ? [0, 1, 2].map((i) => <Skeleton key={i} className="h-[52px] w-full" />)
+          : fixtures.map((f) => (
+              <MatchCard
+                key={f.id}
+                home={teamCode(f.home_team)}
+                away={teamCode(f.away_team)}
+                kickoff={kickoffLabel(f)}
+                status={f.status}
+                onClick={() => router.push("/app/terrace/QPR7")}
+              />
+            ))}
       </motion.section>
 
       {/* the one primary action */}
