@@ -1,9 +1,12 @@
 /**
  * Seed the Supabase `fixtures` table from live TxLINE World Cup data.
  *
- * Flow: guest JWT -> fixtures snapshot (competition 72, today onward) ->
- * idempotent upsert -> read back and print proof rows. Safe to re-run:
- * upsert keys on the TxLINE fixture id and never touches status/last_snapshot.
+ * Flow: guest JWT -> fixtures snapshot (competition 72, past 7 days onward,
+ * so finished fixtures get re-statused too) -> idempotent upsert -> read
+ * back and print proof rows. Safe to re-run: upsert keys on the TxLINE
+ * fixture id; `status` is derived from GameState + kickoff time on every
+ * run (statusFromFixture in apps/ingest/src/db.ts), `last_snapshot` is
+ * never touched.
  *
  * Run: pnpm tsx scripts/seed-fixtures.ts
  * Env: repo-root .env (NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY,
@@ -25,7 +28,9 @@ async function main() {
   client.setTokens(jwt, apiToken);
   console.log("[auth] guest JWT acquired");
 
-  const startEpochDay = Math.floor(Date.now() / 86_400_000);
+  // Reach 7 days back: finished fixtures must be seeded too, or a stale
+  // "live" row from a past match never gets corrected to "final".
+  const startEpochDay = Math.floor(Date.now() / 86_400_000) - 7;
   const fixtures = (await client.fixtures({ startEpochDay })) as TxLineFixtureRow[];
   console.log(`[txline] ${fixtures.length} World Cup fixtures fetched (from epoch day ${startEpochDay})`);
   if (fixtures.length === 0) throw new Error("TxLINE returned zero fixtures; nothing to seed");
@@ -41,11 +46,10 @@ async function main() {
   const { data, error, count } = await supabase
     .from("fixtures")
     .select("id, home_team, away_team, kickoff_at, status, group_round", { count: "exact" })
-    .order("kickoff_at", { ascending: true })
-    .limit(3);
+    .order("kickoff_at", { ascending: true });
   if (error) throw new Error(`read-back failed: ${error.message}`);
 
-  console.log(`[db] fixtures table now holds ${count} rows; first 3 by kickoff:`);
+  console.log(`[db] fixtures table now holds ${count} rows:`);
   for (const row of data ?? []) {
     console.log(
       `  ${row.id}  ${row.home_team} v ${row.away_team}  ${row.kickoff_at}  status=${row.status}` +

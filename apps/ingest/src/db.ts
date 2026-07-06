@@ -21,6 +21,8 @@ export interface TxLineFixtureRow {
   Participant1IsHome: boolean;
   /** Epoch time; TxLINE serves seconds, but we tolerate ms defensively. */
   StartTime: number;
+  /** Integer lifecycle state; see statusFromFixture for the decoded values. */
+  GameState?: number;
   Competition?: string;
   /** Group/round labels if the payload carries them (not always present). */
   Group?: string;
@@ -58,10 +60,30 @@ export function statusFromPhase(phase: MatchPhase): FixtureStatus {
   return "live";
 }
 
-/** Idempotent fixtures upsert keyed on the TxLINE fixture id.
-    `status` and `last_snapshot` are intentionally OMITTED: inserts take the
-    'upcoming' column default, and re-runs never clobber what the live loop
-    has since written. Returns the number of rows written (0 on failure). */
+/** Decode the fixtures-snapshot integer `GameState` into our status.
+    Observed live against txline-dev, July 6 2026 (scripts/probe-gamestate.ts):
+      1 = scheduled (all future fixtures carry it)
+      3 = finished/finalised (every fixture >3h past kickoff except stragglers)
+      2 = in-play (inferred: only value between 1 and 3; nothing was live
+          during the probe, so it is trusted but also backstopped below)
+    The field lags: recently finished fixtures can sit at GameState=1 for
+    hours, and some rows omit it entirely. Kickoff time is the fallback:
+    future = upcoming; older than 3h with no live signal = final; else live. */
+export function statusFromFixture(
+  f: Pick<TxLineFixtureRow, "GameState" | "StartTime">,
+  now = Date.now(),
+): FixtureStatus {
+  if (f.GameState === 3) return "final";
+  if (f.GameState === 2) return "live";
+  const kickoffMs = f.StartTime > 1e12 ? f.StartTime : f.StartTime * 1000;
+  if (kickoffMs > now) return "upcoming";
+  return now - kickoffMs > 3 * 3_600_000 ? "final" : "live";
+}
+
+/** Idempotent fixtures upsert keyed on the TxLINE fixture id. Sets `status`
+    from GameState + kickoff time (statusFromFixture), so seeds and boots
+    correct stale statuses; the live loop then refines it per poll from the
+    scores phase. `last_snapshot` stays untouched. Returns rows written. */
 export async function upsertFixtures(fixtures: TxLineFixtureRow[]): Promise<number> {
   const client = db();
   if (!client || fixtures.length === 0) return 0;
@@ -71,6 +93,7 @@ export async function upsertFixtures(fixtures: TxLineFixtureRow[]): Promise<numb
     away_team: f.Participant1IsHome ? f.Participant2 : f.Participant1,
     kickoff_at: toIso(f.StartTime),
     group_round: f.Group ?? f.GroupName ?? f.Round ?? null,
+    status: statusFromFixture(f),
   }));
   const { error } = await client.from("fixtures").upsert(rows, { onConflict: "id" });
   if (error) {

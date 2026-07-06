@@ -22,9 +22,16 @@ import { loadRootEnv } from "./env.js";
 loadRootEnv();
 
 import { TxLineClient } from "@kick/txline-client";
-import { diffStates, judge, type Candidate, type MatchEvent, type MatchState } from "@kick/shared";
+import { diffStates, judge, type Candidate, type MatchEvent, type MatchPhase, type MatchState } from "@kick/shared";
 import { speak } from "@kick/oracle";
-import { ensureSimFixtureAndRoom, insertOracleEvent, updateFixtureSnapshot, upsertFixtures, type TxLineFixtureRow } from "./db.js";
+import {
+  ensureSimFixtureAndRoom,
+  insertOracleEvent,
+  statusFromFixture,
+  updateFixtureSnapshot,
+  upsertFixtures,
+  type TxLineFixtureRow,
+} from "./db.js";
 import { PropsEngine } from "./props.js";
 import { SIM_AWAY, SIM_FIXTURE_ID, SIM_HOME, SIM_ROOM_CODE, simStateAt } from "./sim.js";
 
@@ -49,21 +56,71 @@ interface Source {
   read: (now: number) => Promise<Reading>;
 }
 
-/* Normalize a raw TxLINE scores snapshot into our MatchState.
-   NOTE: exact scores payload shape lands after the first live pull; the
-   mapper is isolated here so fixing it is a one-function change. */
+/* ── Scores snapshot payload (confirmed live July 6 2026, probe scripts) ──
+   /api/scores/snapshot/{id} returns an ARRAY of update rows, one per action
+   kind (kickoff, goal, corner, status, game_finalised, ...), NOT a single
+   flat object. The per-row string `GameState` is stale ("scheduled" even on
+   finished matches); the live phase signal is the integer `StatusId`:
+     1 = pre-match      (jersey/pitch/warm-up rows, clock stopped at 0)
+     2 = first half     (var rows at clock 643s/715s)
+     3 = half time      (halftime_finalised)
+     4 = second half    (clock 45:00+..)
+     5 = full time      (status/clock_adjustment rows, clock stopped at 0)
+   100 = finalised      (game_finalised / disconnected)
+   Scores + corners live in `Score.ParticipantN.Total`. */
+const PHASE_BY_STATUS_ID: Record<number, MatchPhase> = {
+  1: "pre",
+  2: "first_half",
+  3: "half_time",
+  4: "second_half",
+  5: "full_time",
+  100: "full_time",
+};
+
+interface ScoreTotals {
+  Total?: { Goals?: number; Corners?: number };
+}
+interface ScoresUpdateRow {
+  Ts?: number;
+  StatusId?: number;
+  Clock?: { Running?: boolean; Seconds?: number };
+  Score?: { Participant1?: ScoreTotals; Participant2?: ScoreTotals };
+}
+
 function normalize(fix: TxLineFixtureRow, raw: unknown, asOf: number): MatchState {
-  const r = (raw ?? {}) as Record<string, unknown>;
-  const num = (k: string) => (typeof r[k] === "number" ? (r[k] as number) : 0);
+  const rows = (Array.isArray(raw) ? raw : raw ? [raw] : []) as ScoresUpdateRow[];
+  const latest = (pick: (r: ScoresUpdateRow) => boolean): ScoresUpdateRow | undefined =>
+    rows.filter(pick).sort((a, b) => (b.Ts ?? 0) - (a.Ts ?? 0))[0];
+
+  const phaseRow = latest((r) => typeof r.StatusId === "number");
+  const scoreRow = latest((r) => r.Score !== undefined);
+  const clockRow = latest((r) => typeof r.Clock?.Seconds === "number");
+
+  // Phase from the newest StatusId; kickoff-time fallback when the feed has
+  // no status rows yet (upcoming fixtures serve only comment/coverage rows).
+  let phase = phaseRow ? PHASE_BY_STATUS_ID[phaseRow.StatusId!] : undefined;
+  if (!phase) {
+    const kickoffMs = fix.StartTime > 1e12 ? fix.StartTime : fix.StartTime * 1000;
+    if (kickoffMs > asOf) phase = "pre";
+    else phase = asOf - kickoffMs > 3 * 3_600_000 ? "full_time" : "first_half";
+  }
+
+  const p1 = scoreRow?.Score?.Participant1?.Total;
+  const p2 = scoreRow?.Score?.Participant2?.Total;
+  const [homeT, awayT] = fix.Participant1IsHome ? [p1, p2] : [p2, p1];
+
   return {
     fixtureId: fix.FixtureId,
     home: fix.Participant1IsHome ? fix.Participant1 : fix.Participant2,
     away: fix.Participant1IsHome ? fix.Participant2 : fix.Participant1,
-    homeScore: num("HomeScore"),
-    awayScore: num("AwayScore"),
-    phase: "first_half", // refined once payload confirmed
-    clockSeconds: null,
-    stats: {},
+    homeScore: homeT?.Goals ?? 0,
+    awayScore: awayT?.Goals ?? 0,
+    phase,
+    clockSeconds: clockRow?.Clock?.Seconds ?? null,
+    stats: {
+      corners_home: homeT?.Corners ?? 0,
+      corners_away: awayT?.Corners ?? 0,
+    },
     asOf,
   };
 }
@@ -90,7 +147,14 @@ async function liveSource(): Promise<Source> {
   const written = await upsertFixtures(fixtures);
   if (written > 0) console.log(`[db] ${written} fixtures upserted`);
 
-  const target = fixtures.sort((a, b) => a.StartTime - b.StartTime)[0];
+  // Watch the match that matters: a live one first, else the next kickoff.
+  // Never camp on a finished fixture (the old sort-and-take-first did, which
+  // is how a fixture stayed "live" in the UI long after full time).
+  const sorted = fixtures.sort((a, b) => a.StartTime - b.StartTime);
+  const target =
+    sorted.find((f) => statusFromFixture(f) === "live") ??
+    sorted.find((f) => statusFromFixture(f) === "upcoming") ??
+    sorted[sorted.length - 1];
   if (!target) throw new Error("no fixtures returned");
   return {
     fixtureId: target.FixtureId,

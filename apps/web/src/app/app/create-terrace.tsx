@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence, useReducedMotion } from "motion/react";
-import { ChevronLeft, Globe, Lock, X } from "lucide-react";
+import { Check, ChevronLeft, Globe, Link2, Lock, X } from "lucide-react";
 import {
   Button,
   Input,
@@ -19,6 +19,8 @@ import {
 import type { FixtureRow } from "../../lib/supabase";
 import { useKickUser } from "../../lib/auth";
 import { teamCode } from "../../lib/team-code";
+import { kickoffCompact } from "../../lib/format-kickoff";
+import { inviteUrl, markJoined } from "../../lib/invite";
 
 /* ── CREATE A TERRACE ── bottom-sheet stepper.
    1 PICK THE MATCH → 2 NAME IT → 3 THE GATES OPEN (create + code + share).
@@ -29,17 +31,10 @@ const STEP_TITLES = ["PICK THE MATCH", "NAME IT", "THE GATES OPEN"] as const;
 
 type Phase = "form" | "creating" | "done" | "error";
 
-const kickoffFmt = new Intl.DateTimeFormat(undefined, {
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-});
-
 function kickoffLabel(f: FixtureRow): string {
   if (f.status === "live") return "LIVE";
   if (f.status === "final") return "FT";
-  const t = Date.parse(f.kickoff_at);
-  return Number.isNaN(t) ? "TBD" : kickoffFmt.format(t);
+  return kickoffCompact(f.kickoff_at);
 }
 
 /* X (the platform) logo glyph; lucide has no brand mark for it. */
@@ -80,6 +75,7 @@ export function CreateTerraceSheet({
   const [visibility, setVisibility] = React.useState<"private" | "public">("private");
   const [phase, setPhase] = React.useState<Phase>("form");
   const [result, setResult] = React.useState<{ code: string; roomId: string } | null>(null);
+  const [linkCopied, setLinkCopied] = React.useState(false);
 
   // fresh sheet every open
   React.useEffect(() => {
@@ -91,6 +87,7 @@ export function CreateTerraceSheet({
     setVisibility("private");
     setPhase("form");
     setResult(null);
+    setLinkCopied(false);
   }, [open]);
 
   // lock body scroll behind the sheet
@@ -154,7 +151,7 @@ export function CreateTerraceSheet({
   const shareOnX = () => {
     if (!result) return;
     sound.play("tap");
-    const text = `The terrace "${roomName}" is open for ${home} v ${away}. Code ${result.code}. Call it before the ref does. kick.fun`;
+    const text = `The terrace "${roomName}" is open for ${home} v ${away}. Walk straight in: ${inviteUrl(result.code)} Call it before the ref does.`;
     window.open(
       `https://x.com/intent/post?text=${encodeURIComponent(text)}`,
       "_blank",
@@ -162,9 +159,18 @@ export function CreateTerraceSheet({
     );
   };
 
+  const copyInviteLink = () => {
+    if (!result) return;
+    sound.play("tap");
+    navigator.clipboard?.writeText(inviteUrl(result.code)).catch(() => {});
+    setLinkCopied(true);
+    window.setTimeout(() => setLinkCopied(false), 1500);
+  };
+
   const enterTerrace = () => {
     if (!result) return;
     sound.play("tap");
+    markJoined(result.code); // the host is already on the terrace, skip auto-join
     onClose();
     router.push(`/app/terrace/${result.code}`);
   };
@@ -418,6 +424,23 @@ export function CreateTerraceSheet({
                             >
                               <RoomCodeChip code={result.code} />
                             </motion.div>
+                            <button
+                              type="button"
+                              onClick={copyInviteLink}
+                              className="-mt-2 inline-flex items-center gap-1.5 font-mono text-xs tabular text-text-dim transition-colors hover:text-text"
+                            >
+                              {linkCopied ? (
+                                <>
+                                  <Check size={12} className="text-win" />
+                                  <span className="text-win">Link copied</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Link2 size={12} />
+                                  Copy invite link
+                                </>
+                              )}
+                            </button>
                             <div className="flex w-full flex-col gap-2">
                               <Button size="lg" className="w-full" onClick={enterTerrace}>
                                 Enter the terrace

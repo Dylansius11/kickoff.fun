@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "motion/react";
-import { ArrowRight, Plus, Hash } from "lucide-react";
+import { ArrowRight, Check, Link2, Plus, Hash } from "lucide-react";
 import {
   Avatar,
   Button,
@@ -21,19 +21,14 @@ import { useFixtures } from "../../lib/use-fixtures";
 import type { FixtureRow } from "../../lib/supabase";
 import { useKickUser } from "../../lib/auth";
 import { teamCode } from "../../lib/team-code";
+import { kickoffCompact } from "../../lib/format-kickoff";
+import { inviteUrl, markJoined } from "../../lib/invite";
 import { CreateTerraceSheet } from "./create-terrace";
-
-const kickoffFmt = new Intl.DateTimeFormat(undefined, {
-  hour: "2-digit",
-  minute: "2-digit",
-  hour12: false,
-});
 
 function kickoffLabel(f: FixtureRow): string {
   if (f.status === "live") return "LIVE";
   if (f.status === "final") return "FT";
-  const t = Date.parse(f.kickoff_at);
-  return Number.isNaN(t) ? "TBD" : kickoffFmt.format(t);
+  return kickoffCompact(f.kickoff_at);
 }
 
 const container = {
@@ -55,6 +50,15 @@ export default function LobbyPage() {
   const [shakes, setShakes] = React.useState(0);
   const { fixtures, loading, live } = useFixtures();
   const { handle, address } = useKickUser();
+  const [copiedCode, setCopiedCode] = React.useState<string | null>(null);
+
+  const copyInvite = (e: React.MouseEvent, code: string) => {
+    e.stopPropagation();
+    sound.play("tap");
+    navigator.clipboard?.writeText(inviteUrl(code)).catch(() => {});
+    setCopiedCode(code);
+    window.setTimeout(() => setCopiedCode((c) => (c === code ? null : c)), 1500);
+  };
 
   const join = async () => {
     const c = code.trim().toUpperCase();
@@ -68,6 +72,7 @@ export default function LobbyPage() {
         body: JSON.stringify({ handle: handle ?? undefined, wallet: address ?? undefined }),
       });
       if (!res.ok) throw new Error(String(res.status));
+      markJoined(c);
       sound.play("kickoff");
       router.push(`/app/terrace/${c}`);
     } catch {
@@ -114,7 +119,21 @@ export default function LobbyPage() {
             >
               <div className="flex items-center justify-between">
                 <Mono className="text-xs font-bold tracking-widest text-text-dim">{t.code}</Mono>
-                {t.live ? <LiveDot /> : <Tag className="text-text-muted">{t.fixture}</Tag>}
+                <div className="flex items-center gap-1.5">
+                  {t.live ? <LiveDot /> : <Tag className="text-text-muted">{t.fixture}</Tag>}
+                  <button
+                    type="button"
+                    onClick={(e) => copyInvite(e, t.code)}
+                    aria-label={`Copy invite link for ${t.name}`}
+                    className="flex h-6 w-6 items-center justify-center rounded-card border border-border-strong text-text-muted transition-colors hover:border-chalk hover:text-text"
+                  >
+                    {copiedCode === t.code ? (
+                      <Check size={12} className="text-win" />
+                    ) : (
+                      <Link2 size={12} />
+                    )}
+                  </button>
+                </div>
               </div>
               <div className="mt-2 truncate text-sm font-bold text-text">{t.name}</div>
               <div className="mt-2 flex items-center justify-between">

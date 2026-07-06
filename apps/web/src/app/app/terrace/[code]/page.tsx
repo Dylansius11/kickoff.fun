@@ -21,6 +21,8 @@ import {
 } from "@kick/ui";
 import { ORACLE_LINES, ROOM_BOARD } from "../../mock";
 import { teamCode } from "../../../../lib/team-code";
+import { useKickUser } from "../../../../lib/auth";
+import { hasJoined, markJoined } from "../../../../lib/invite";
 
 const TABS = ["PREDICT", "TABLE", "ORACLE"] as const;
 type Tab = (typeof TABS)[number];
@@ -68,6 +70,39 @@ export default function TerracePage() {
       on = false;
     };
   }, [code]);
+
+  // Invite deep link: a visitor landing on a real room becomes a member with
+  // zero prompts. sessionStorage guards against re-joining on every mount;
+  // the join endpoint is idempotent anyway. Guests join as "guest".
+  const { ready, authenticated, handle, address } = useKickUser();
+  const [welcome, setWelcome] = React.useState(false);
+  const joinFired = React.useRef(false);
+  React.useEffect(() => {
+    if (!room || !ready || joinFired.current || hasJoined(code)) return;
+    joinFired.current = true;
+    let on = true;
+    fetch(`/api/rooms/${encodeURIComponent(code)}/join`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(
+        authenticated ? { handle: handle ?? undefined, wallet: address ?? undefined } : {},
+      ),
+    })
+      .then((r) => (r.ok ? (r.json() as Promise<RoomInfo>) : null))
+      .then((data) => {
+        if (!data) return;
+        markJoined(code);
+        if (!on) return;
+        setRoom((prev) => (prev ? { ...prev, members: data.members } : prev));
+        setWelcome(true);
+        sound.play("kickoff");
+        window.setTimeout(() => on && setWelcome(false), 3000);
+      })
+      .catch(() => {});
+    return () => {
+      on = false;
+    };
+  }, [room, ready, code, authenticated, handle, address]);
 
   // The Gaffer speaks over the tannoy: play toggles voice, wave bars follow.
   const toggleOracleVoice = React.useCallback(() => {
@@ -144,6 +179,29 @@ export default function TerracePage() {
     <div className="relative flex flex-1 flex-col">
       {/* goal burst overlays the whole terrace */}
       {burst > 0 && <PixelBurst burstKey={burst} className="fixed inset-x-0 top-24 h-64" />}
+
+      {/* one-time welcome strip after an invite-link auto-join */}
+      <AnimatePresence>
+        {welcome && (
+          <motion.div
+            key="welcome"
+            initial={{ y: -48, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: -48, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 380, damping: 30 }}
+            className="fixed inset-x-0 top-[57px] z-40 mx-auto w-full max-w-[430px] px-4 pt-2"
+          >
+            <div
+              role="status"
+              className="flex items-center justify-center gap-2 rounded-card border-2 border-pitch-700 bg-surface px-3 py-2 shadow-hard-pitch"
+            >
+              <span className="font-display text-xs tracking-widest text-win">YOU ARE IN</span>
+              <span className="text-text-muted">·</span>
+              <span className="text-xs text-text-dim">welcome to the terrace</span>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* sticky live header */}
       <div className="sticky top-[57px] z-30 bg-bg px-4 pb-2 pt-3">
