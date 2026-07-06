@@ -6,7 +6,7 @@ import { ShieldCheck, Copy, Check, Trophy, Loader2 } from "lucide-react";
 import { cn } from "../lib/utils";
 import { Mono } from "./primitives";
 import { BallMascot } from "./mascot";
-import { shareCard, openXIntent, waLink } from "../share";
+import { shareToX, openXIntent, type SharePath } from "../share";
 
 /* ── CountUp ── tabular number that rolls to its target (points, pot, rank). */
 export function CountUp({
@@ -153,9 +153,10 @@ export function ShareCard({ data, className }: { data: ShareCardData; className?
         style={{ background: "radial-gradient(80% 55% at 50% 0%, rgba(34,197,94,0.22), transparent 70%)" }}
       />
       <div className="scanlines pointer-events-none absolute inset-0 -z-10 opacity-40" />
-      {/* sheen sweep */}
+      {/* sheen sweep (excluded from PNG capture: a mid-sweep frame smears) */}
       {!reduce && (
         <motion.div
+          data-no-capture
           className="pointer-events-none absolute inset-y-0 -left-1/3 -z-10 w-1/3"
           style={{ background: "linear-gradient(105deg, transparent, rgba(241,245,240,0.10), transparent)" }}
           animate={{ x: ["0%", "420%"] }}
@@ -243,11 +244,34 @@ function Tag({ className, children }: { className?: string; children: React.Reac
   return <span className={cn("font-mono text-[10px] font-bold uppercase tracking-wide tabular", className)}>{children}</span>;
 }
 
-/* ── ShareActions ── post to X (primary) + WhatsApp + copy.
-   X is the share platform. When a cardRef is provided the primary button
-   snapshots the card to a PNG: on mobile that opens the OS share sheet
-   (WhatsApp, Instagram, X, anything installed); on desktop it downloads
-   the PNG and opens the X composer with the caption. */
+/* ── Share copy ── one caption per finish, chosen off the card data.
+   Beats: flex the result, the proof angle, the invite. Under 240 chars,
+   no em-dash, no emoji, no hashtags. */
+function ordinal(n: number): string {
+  const v = n % 100;
+  if (v >= 11 && v <= 13) return `${n}th`;
+  const tail = ["th", "st", "nd", "rd"][n % 10] ?? "th";
+  return `${n}${tail}`;
+}
+
+export function buildShareText(data: ShareCardData): string {
+  const place = `${ordinal(data.rank)} of ${data.total}`;
+  const pts = `${data.points.toLocaleString("en-US")} pts`;
+  const invite = "Pull up a seat at kick.fun, the terrace is open.";
+  if (data.rank === 1 && data.potLabel) {
+    return `${place} in ${data.fixture}, walked off with the ${data.potLabel} pot. ${pts}, receipts signed by TxLINE and anchored on Solana. Nobody can fake this table. ${invite}`;
+  }
+  if (data.rank <= 3) {
+    return `${place} in ${data.fixture}. ${pts}, receipts signed by TxLINE and anchored on Solana. Nobody can fake this table. ${invite}`;
+  }
+  return `${place} in ${data.fixture}. Mid table, still got receipts: ${pts}, signed by TxLINE and anchored on Solana. ${invite}`;
+}
+
+/* ── ShareActions ── one primary button, "Post to X". One click delivers
+   caption AND card image: OS share sheet on mobile (image and text attached,
+   user picks X), clipboard-plus-composer on desktop (paste to attach), or
+   download-plus-composer as the last resort. A hint chip tells the user the
+   one remaining step on the desktop paths. */
 function XGlyph({ size = 15 }: { size?: number }) {
   return (
     <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" aria-hidden>
@@ -256,14 +280,13 @@ function XGlyph({ size = 15 }: { size?: number }) {
   );
 }
 
-function WaGlyph({ size = 16 }: { size?: number }) {
-  // WhatsApp mark drawn inline (Lucide has no WhatsApp glyph)
-  return (
-    <svg viewBox="0 0 24 24" width={size} height={size} fill="currentColor" aria-hidden>
-      <path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38a9.9 9.9 0 0 0 4.74 1.21h.01c5.46 0 9.9-4.45 9.9-9.91 0-2.65-1.03-5.14-2.9-7.01A9.82 9.82 0 0 0 12.04 2m0 18.15h-.01a8.2 8.2 0 0 1-4.19-1.15l-.3-.18-3.12.82.83-3.04-.2-.31a8.2 8.2 0 0 1-1.26-4.38c0-4.54 3.7-8.24 8.25-8.24 2.2 0 4.27.86 5.82 2.42a8.18 8.18 0 0 1 2.41 5.83c0 4.54-3.7 8.23-8.23 8.23m4.52-6.16c-.25-.12-1.47-.72-1.69-.81-.23-.08-.39-.12-.56.13-.16.24-.64.8-.78.97-.15.16-.29.18-.54.06-.25-.13-1.05-.39-2-1.23-.73-.66-1.23-1.47-1.38-1.72-.14-.25-.01-.38.11-.51.11-.11.25-.29.37-.43.12-.15.16-.25.25-.41.08-.17.04-.31-.02-.43-.06-.13-.56-1.35-.77-1.84-.2-.49-.4-.42-.56-.43h-.48c-.16 0-.43.06-.66.31-.22.25-.86.85-.86 2.07s.89 2.4 1.01 2.56c.12.17 1.75 2.67 4.23 3.74.59.26 1.05.41 1.41.52.6.19 1.13.16 1.56.1.48-.07 1.47-.6 1.67-1.18.21-.58.21-1.07.15-1.18-.07-.1-.23-.16-.48-.27" />
-    </svg>
-  );
+function pasteChord(): string {
+  if (typeof navigator === "undefined") return "Ctrl+V";
+  const mac = /Mac|iPhone|iPad|iPod/.test(navigator.platform ?? "") || /Mac OS X/.test(navigator.userAgent ?? "");
+  return mac ? "Cmd+V" : "Ctrl+V";
 }
+
+const HINT_MS = 6000;
 
 export function ShareActions({
   onShare,
@@ -280,11 +303,19 @@ export function ShareActions({
 }) {
   const [copied, setCopied] = React.useState(false);
   const [sharing, setSharing] = React.useState(false);
+  const [hint, setHint] = React.useState<string | null>(null);
+  const hintTimer = React.useRef<number | undefined>(undefined);
+  React.useEffect(() => () => window.clearTimeout(hintTimer.current), []);
   const text = shareText ?? "";
   const copy = () => {
     navigator.clipboard?.writeText(text).catch(() => {});
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1600);
+  };
+  const showHint = (msg: string) => {
+    setHint(msg);
+    window.clearTimeout(hintTimer.current);
+    hintTimer.current = window.setTimeout(() => setHint(null), HINT_MS);
   };
   const share = async () => {
     const el = cardRef?.current;
@@ -292,8 +323,12 @@ export function ShareActions({
       if (sharing) return;
       setSharing(true);
       try {
-        await shareCard({ el, text });
+        // called with no awaits before it: shareToX needs the user gesture
+        const path: SharePath = await shareToX({ el, text });
+        if (path === "clipboard") showHint(`Image copied · press ${pasteChord()} in your post`);
+        else if (path === "download") showHint("Image downloaded · attach it to your post");
       } catch {
+        // whatever broke, the caption still ships
         openXIntent(text);
       } finally {
         setSharing(false);
@@ -304,26 +339,18 @@ export function ShareActions({
     onShare?.();
   };
   return (
-    <div className={cn("flex items-center gap-2", className)}>
-      <button
-        type="button"
-        onClick={share}
-        disabled={sharing}
-        className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-card border-2 border-pitch-700 bg-pitch text-sm font-bold text-on-primary shadow-hard-pitch transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-press disabled:opacity-70"
-      >
-        {sharing ? <Loader2 size={15} className="animate-spin" /> : <XGlyph />} Post full time
-      </button>
-      <a
-        href={waLink(text)}
-        target="_blank"
-        rel="noopener noreferrer"
-        aria-label="Share on WhatsApp"
-        onClick={() => onShare?.()}
-        className="inline-flex h-11 w-11 items-center justify-center rounded-card border-2 border-border-strong bg-surface-2 text-text shadow-hard transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-press"
-      >
-        <WaGlyph size={17} />
-      </a>
-      <button
+    <div className={cn("flex flex-col gap-2", className)}>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          onClick={share}
+          disabled={sharing}
+          className="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-card border-2 border-pitch-700 bg-pitch text-sm font-bold text-on-primary shadow-hard-pitch transition-transform active:translate-x-[2px] active:translate-y-[2px] active:shadow-press disabled:opacity-70"
+        >
+          {sharing ? <Loader2 size={15} className="animate-spin" /> : <XGlyph />}
+          {sharing ? "Framing the card" : "Post to X"}
+        </button>
+        <button
         type="button"
         onClick={copy}
         aria-label="Copy result"
@@ -340,7 +367,24 @@ export function ShareActions({
             </motion.span>
           )}
         </AnimatePresence>
-      </button>
+        </button>
+      </div>
+      {/* one-step hint for the desktop paths, slides up under the button */}
+      <AnimatePresence>
+        {hint && (
+          <motion.div
+            key={hint}
+            initial={{ y: 10, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 4, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 420, damping: 30 }}
+            className="self-center rounded-full border border-pitch-700 bg-pitch/10 px-3 py-1"
+            role="status"
+          >
+            <Mono className="text-[11px] text-win">{hint}</Mono>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -379,7 +423,7 @@ export function FullTimeScreen({ data, onShare, className }: { data: ShareCardDa
         <ShareActions
           cardRef={cardRef}
           onShare={() => { setBurst((b) => b + 1); onShare?.(); }}
-          shareText={`I finished ${data.rank}/${data.total} in ${data.fixture} on KICK.FUN with ${data.points} pts. Signed by TxLINE, anchored on Solana. Nobody can fake this.`}
+          shareText={buildShareText(data)}
         />
       </motion.div>
     </motion.div>

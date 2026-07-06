@@ -34,7 +34,8 @@ export async function POST(req: Request, ctx: { params: Promise<{ code: string }
     if (error && error.code !== UNIQUE_VIOLATION) throw new Error(error.message);
     if (!error) room.members += 1;
 
-    return NextResponse.json(room);
+    // userId lets the client remember who "this browser" is (guest history lookups)
+    return NextResponse.json({ ...room, userId });
   } catch (e) {
     console.error("[api/rooms/[code]/join] failed:", e);
     return NextResponse.json({ error: "internal error" }, { status: 500 });

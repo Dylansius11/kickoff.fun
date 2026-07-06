@@ -346,7 +346,7 @@ export default function Landing() {
             <span className="font-display text-xl tracking-tight text-text">KICK.FUN</span>
           </div>
           <div className="flex items-center gap-2">
-            <VolumeControl />
+            <VolumeControl compact />
             <Link href="/app">
               <Button size="sm">
                 Launch app <ArrowRight size={14} />

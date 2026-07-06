@@ -1,11 +1,15 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { Lock, Check, Wallet, LogOut, LogIn } from "lucide-react";
-import { Avatar, Card, CountUp, Mono, StreakFlame, Tag, Button } from "@kick/ui";
+import { Lock, Check, Wallet, LogOut, LogIn, ChevronRight } from "lucide-react";
+import { Avatar, Card, CountUp, Mono, Skeleton, StreakFlame, Tag, Button } from "@kick/ui";
 import { COSMETICS, YOU, type Cosmetic } from "../mock";
 import { useKickUser, shortAddress } from "@/lib/auth";
+import { teamCode } from "@/lib/team-code";
+import { formatKickoff } from "@/lib/format-kickoff";
+import { useHistoryIdentity, useMatchHistory, type HistoryEntry } from "@/lib/use-history";
 
 const container = {
   hidden: {},
@@ -59,6 +63,79 @@ function CosmeticCard({ c }: { c: Cosmetic }) {
         )}
       </div>
     </Card>
+  );
+}
+
+/* ── MatchHistoryRow ── one played fixture: teams, date, calls, net points */
+function MatchHistoryRow({ entry, onClick }: { entry: HistoryEntry; onClick: () => void }) {
+  const won = entry.points > 0;
+  return (
+    <Card interactive onClick={onClick} className="flex items-center justify-between gap-3 px-4 py-3">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <span className="font-display text-sm text-text">
+            {teamCode(entry.home)}
+            <span className="mx-1 text-text-muted">v</span>
+            {teamCode(entry.away)}
+          </span>
+          {entry.allCorrect && <StreakFlame count={entry.correct} />}
+        </div>
+        <div className="mt-0.5 text-xs text-text-dim">
+          {entry.correct} of {entry.total} calls · {formatKickoff(entry.kickoffAt).day}
+        </div>
+      </div>
+      <div className="flex shrink-0 items-center gap-1.5">
+        <Mono className={"text-sm font-bold " + (won ? "text-win" : "text-text-muted")}>
+          {won ? `+${entry.points}` : "0"}
+        </Mono>
+        <ChevronRight size={14} className="text-text-muted" />
+      </div>
+    </Card>
+  );
+}
+
+function MatchHistorySection() {
+  const router = useRouter();
+  const { login } = useKickUser();
+  const { userId, resolved, guest } = useHistoryIdentity();
+  const { entries, loading } = useMatchHistory(userId, resolved);
+
+  return (
+    <div>
+      <div className="mb-2 flex items-baseline justify-between">
+        <span className="font-display text-sm text-text">MATCH HISTORY</span>
+        {entries.length > 0 && <Mono className="text-xs text-text-muted">{entries.length}</Mono>}
+      </div>
+      {!resolved || loading ? (
+        <div className="flex flex-col gap-2">
+          <Skeleton className="h-[62px] w-full" />
+          <Skeleton className="h-[62px] w-full" />
+        </div>
+      ) : entries.length > 0 ? (
+        <div className="flex flex-col gap-2">
+          {entries.map((e) => (
+            <MatchHistoryRow
+              key={e.fixtureId}
+              entry={e}
+              onClick={() => router.push(`/app/match/${e.fixtureId}`)}
+            />
+          ))}
+        </div>
+      ) : guest && !userId ? (
+        <Card className="px-4 py-5 text-center">
+          <p className="text-sm text-text-dim">
+            Your calls live in this browser. Sign in to make them permanent.
+          </p>
+          <Button size="sm" className="mt-3" onClick={login}>
+            <LogIn size={13} /> Sign in
+          </Button>
+        </Card>
+      ) : (
+        <Card className="px-4 py-5 text-center text-sm text-text-dim">
+          No matches on the record yet. Call one tonight.
+        </Card>
+      )}
+    </div>
   );
 }
 
@@ -153,6 +230,11 @@ export default function LockerPage() {
             ))}
           </div>
         </Card>
+      </motion.div>
+
+      {/* match history: the record of every fixture this player called */}
+      <motion.div variants={item}>
+        <MatchHistorySection />
       </motion.div>
 
       {/* cosmetics */}

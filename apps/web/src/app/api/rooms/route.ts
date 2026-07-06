@@ -61,7 +61,7 @@ export async function POST(req: Request) {
     if (memberErr && memberErr.code !== UNIQUE_VIOLATION) throw new Error(memberErr.message);
 
     return NextResponse.json(
-      { code: room.room_code, roomId: room.id, fixtureId: fixture.id },
+      { code: room.room_code, roomId: room.id, fixtureId: fixture.id, userId: hostId },
       { status: 201 },
     );
   } catch (e) {

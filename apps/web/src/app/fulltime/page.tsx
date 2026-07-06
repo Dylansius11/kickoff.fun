@@ -1,8 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { RotateCcw } from "lucide-react";
 import { Button, VolumeControl, FullTimeScreen, useSound } from "@kick/ui";
+import { KickAuthProvider } from "@/lib/auth";
+import { ClaimPotButton } from "../app/claim-pot";
+
+/* Optional on-chain claim slot: /fulltime?room=<room PDA> renders the winner's
+   claim button under the reveal. Without the param the page is unchanged. */
+function ClaimSlot() {
+  const room = useSearchParams().get("room");
+  if (!room) return null;
+  return (
+    <div className="mt-8">
+      <KickAuthProvider>
+        <ClaimPotButton roomPda={room} />
+      </KickAuthProvider>
+    </div>
+  );
+}
 
 /**
  * /fulltime — the immersive post-match screen, standalone for the demo cut.
@@ -57,6 +74,10 @@ export default function FullTimePage() {
         >
           <RotateCcw size={14} /> Replay reveal
         </Button>
+
+        <Suspense fallback={null}>
+          <ClaimSlot />
+        </Suspense>
       </div>
     </main>
   );

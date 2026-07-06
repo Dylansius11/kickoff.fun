@@ -9,4 +9,4 @@ export * from "./components/mascot";
 export * from "./components/celebration";
 export { sound, type SfxName } from "./sound";
 export { oracleVoice, useOracleSpeaking } from "./speech";
-export { captureNode, shareCard, openXIntent, waLink, type SharePath } from "./share";
+export { captureNode, shareToX, shareCard, openXIntent, waLink, type SharePath } from "./share";

@@ -8,6 +8,7 @@ import {
   Avatar,
   Button,
   Card,
+  Chip,
   Input,
   LiveDot,
   MatchCard,
@@ -21,14 +22,59 @@ import { useFixtures } from "../../lib/use-fixtures";
 import type { FixtureRow } from "../../lib/supabase";
 import { useKickUser } from "../../lib/auth";
 import { teamCode } from "../../lib/team-code";
-import { kickoffCompact } from "../../lib/format-kickoff";
+import { formatKickoff, kickoffCompact } from "../../lib/format-kickoff";
 import { inviteUrl, markJoined } from "../../lib/invite";
+import { rememberUserId } from "../../lib/identity";
+import { snapshotScore, useHistoryIdentity, usePlayedFixtureIds } from "../../lib/use-history";
 import { CreateTerraceSheet } from "./create-terrace";
 
 function kickoffLabel(f: FixtureRow): string {
   if (f.status === "live") return "LIVE";
   if (f.status === "final") return "FT";
   return kickoffCompact(f.kickoff_at);
+}
+
+/* ── FullTimeCard ── compact result tile for the horizontal FT strip */
+function FullTimeCard({
+  fixture,
+  played,
+  onClick,
+}: {
+  fixture: FixtureRow;
+  played: boolean;
+  onClick: () => void;
+}) {
+  const score = snapshotScore(fixture);
+  return (
+    <Card
+      interactive
+      onClick={onClick}
+      className="flex w-[150px] shrink-0 snap-start flex-col gap-1.5 p-3"
+    >
+      <div className="flex items-center justify-between">
+        <span className="font-display text-sm text-text">
+          {teamCode(fixture.home_team)}
+          <span className="mx-1 text-text-muted">v</span>
+          {teamCode(fixture.away_team)}
+        </span>
+      </div>
+      {score ? (
+        <Mono className="text-2xl font-bold text-text">
+          {score.home}–{score.away}
+        </Mono>
+      ) : (
+        <Mono className="text-2xl font-bold text-text-muted">FT</Mono>
+      )}
+      <div className="flex items-center justify-between gap-1">
+        <Mono className="text-[10px] text-text-muted">{formatKickoff(fixture.kickoff_at).day}</Mono>
+        {played && (
+          <Chip tone="pitch" className="px-1.5 py-0 text-[9px] font-bold tracking-wide">
+            YOU PLAYED
+          </Chip>
+        )}
+      </div>
+    </Card>
+  );
 }
 
 const container = {
@@ -51,6 +97,18 @@ export default function LobbyPage() {
   const { fixtures, loading, live } = useFixtures();
   const { handle, address } = useKickUser();
   const [copiedCode, setCopiedCode] = React.useState<string | null>(null);
+  const { userId } = useHistoryIdentity();
+  const playedFixtureIds = usePlayedFixtureIds(userId);
+
+  // live + upcoming stay in the fixtures list; finished matches move to the FT strip
+  const tonight = React.useMemo(() => fixtures.filter((f) => f.status !== "final"), [fixtures]);
+  const finished = React.useMemo(
+    () =>
+      fixtures
+        .filter((f) => f.status === "final" && f.id > 0) // mock rows have no post-mortem to open
+        .sort((a, b) => Date.parse(b.kickoff_at) - Date.parse(a.kickoff_at)),
+    [fixtures],
+  );
 
   const copyInvite = (e: React.MouseEvent, code: string) => {
     e.stopPropagation();
@@ -72,6 +130,8 @@ export default function LobbyPage() {
         body: JSON.stringify({ handle: handle ?? undefined, wallet: address ?? undefined }),
       });
       if (!res.ok) throw new Error(String(res.status));
+      const info = (await res.json().catch(() => null)) as { userId?: string } | null;
+      rememberUserId(info?.userId);
       markJoined(c);
       sound.play("kickoff");
       router.push(`/app/terrace/${c}`);
@@ -169,7 +229,7 @@ export default function LobbyPage() {
         )}
         {loading
           ? [0, 1, 2].map((i) => <Skeleton key={i} className="h-[52px] w-full" />)
-          : fixtures.map((f) => (
+          : tonight.map((f) => (
               <MatchCard
                 key={f.id}
                 home={teamCode(f.home_team)}
@@ -180,6 +240,29 @@ export default function LobbyPage() {
               />
             ))}
       </motion.section>
+
+      {/* full time: finished matches move off the main list into a compact strip */}
+      {!loading && finished.length > 0 && (
+        <motion.section variants={item}>
+          <div className="mb-2 flex items-baseline justify-between">
+            <span className="font-display text-sm text-text">FULL TIME</span>
+            <Mono className="text-xs text-text-muted">{finished.length}</Mono>
+          </div>
+          <div className="-mx-4 flex snap-x snap-mandatory gap-3 overflow-x-auto px-4 pb-2 [scrollbar-width:none]">
+            {finished.map((f) => (
+              <FullTimeCard
+                key={f.id}
+                fixture={f}
+                played={playedFixtureIds.has(f.id)}
+                onClick={() => {
+                  sound.play("tap");
+                  router.push(`/app/match/${f.id}`);
+                }}
+              />
+            ))}
+          </div>
+        </motion.section>
+      )}
 
       {/* the one primary action */}
       <motion.section variants={item} className="mt-auto flex flex-col gap-2">

@@ -5,12 +5,15 @@ import { useParams } from "next/navigation";
 import { motion, AnimatePresence } from "motion/react";
 import { Zap } from "lucide-react";
 import {
+  Card,
   LeaderboardRow,
   LeaderboardTable,
+  LiveDot,
   OracleBubble,
   PixelBurst,
   PotBanner,
   PredictionCard,
+  PredictionOption,
   RoomCodeChip,
   Scoreboard,
   Tag,
@@ -23,6 +26,7 @@ import { ORACLE_LINES, ROOM_BOARD } from "../../mock";
 import { teamCode } from "../../../../lib/team-code";
 import { useKickUser } from "../../../../lib/auth";
 import { hasJoined, markJoined } from "../../../../lib/invite";
+import { useTerraceLive, type LiveProp } from "../../../../lib/use-terrace";
 
 const TABS = ["PREDICT", "TABLE", "ORACLE"] as const;
 type Tab = (typeof TABS)[number];
@@ -37,11 +41,97 @@ interface RoomInfo {
 }
 
 const LOCK_WINDOW_MS = 45_000;
+/** Base points for a correct pick. Mirrors PROP_POINTS in apps/ingest/src/props.ts. */
+const PROP_POINTS = 50;
 
 function fmtClock(totalSec: number) {
   const m = Math.floor(totalSec / 60);
   const s = totalSec % 60;
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+/* ── LivePropCard ── one real prop off the props engine, mapped onto the
+   five-state PredictionCard. Voided gets its own dimmed treatment (the shared
+   card has no voided state and MISSED would be a lie). */
+function LivePropCard({
+  prop,
+  myPick,
+  now,
+  onPick,
+}: {
+  prop: LiveProp;
+  myPick: string | undefined;
+  now: number;
+  onPick: (propId: string, optionId: string) => void;
+}) {
+  const options = prop.options.map((o) => ({
+    name: o.label,
+    odds: o.odds ?? "",
+    picked: myPick === o.id,
+  }));
+
+  if (prop.state === "voided") {
+    return (
+      <Card className="border-2 border-border p-4 opacity-50">
+        <div className="mb-3 flex items-center justify-between">
+          <span className="font-display text-sm text-text">{prop.prompt}</span>
+          <Tag className="text-text-muted">VOIDED</Tag>
+        </div>
+        <div className="space-y-2">
+          {options.map((o) => (
+            <PredictionOption key={o.name} {...o} disabled />
+          ))}
+        </div>
+        <p className="mt-3 border-t border-border pt-3 text-xs text-text-muted">
+          VOIDED · VAR took it back
+        </p>
+      </Card>
+    );
+  }
+
+  const locks = Date.parse(prop.locks_at);
+  const opens = Date.parse(prop.opens_at);
+
+  let state: PredictionState;
+  let progress: number | undefined;
+  let correctAnswer: string | undefined;
+  if (prop.state === "open") {
+    // The worker flips state on its own tick; stamp the card shut locally the
+    // moment the window is past so nobody taps a dead market.
+    if (now >= locks) {
+      state = "locked";
+    } else {
+      state = "open";
+      progress = Math.max(0, Math.min(1, (locks - now) / Math.max(1, locks - opens)));
+    }
+  } else if (prop.state === "locked") {
+    state = "locked";
+  } else if (prop.state === "under_review") {
+    state = "review";
+  } else {
+    const winId = prop.resolution?.winning_option_id ?? null;
+    state = myPick != null && myPick === winId ? "win" : "miss";
+    correctAnswer = prop.options.find((o) => o.id === winId)?.label ?? "n/a";
+  }
+
+  return (
+    <PredictionCard
+      prompt={prop.prompt}
+      options={options}
+      state={state}
+      points={PROP_POINTS}
+      correctAnswer={correctAnswer}
+      progress={progress}
+      onSelect={
+        state === "open"
+          ? (name) => {
+              const opt = prop.options.find((o) => o.label === name);
+              if (opt) onPick(prop.id, opt.id);
+            }
+          : undefined
+      }
+    />
+  );
 }
 
 export default function TerracePage() {
@@ -55,8 +145,8 @@ export default function TerracePage() {
   const [oracleLine, setOracleLine] = React.useState(ORACLE_LINES.idle);
   const oracleSpeaking = useOracleSpeaking();
 
-  // Real room lookup: when the code exists in Supabase, the header goes live
-  // (fixture teams, terrace name, member count). Unknown codes keep the demo.
+  // Real room lookup: when the code exists in Supabase, the whole terrace goes
+  // live (props, picks, table, Oracle, score). Unknown codes keep the demo.
   const [room, setRoom] = React.useState<RoomInfo | null>(null);
   React.useEffect(() => {
     let on = true;
@@ -104,14 +194,100 @@ export default function TerracePage() {
     };
   }, [room, ready, code, authenticated, handle, address]);
 
+  // ── LIVE MODE ── real props, picks, leaderboard and Oracle off Supabase
+  // Realtime. Settle/lock/goal reactions mirror the sim moments below.
+  const {
+    props: liveProps,
+    propsLoaded,
+    myPicks,
+    members,
+    snapshot,
+    oracleFeed,
+    userId,
+    pick: sendPick,
+  } = useTerraceLive(room?.roomId ?? null, room?.fixture.id ?? null, {
+    onSettle: (_prop, _picked, won) => {
+      if (won) {
+        setBurst((b) => b + 1);
+        sound.play("win");
+      }
+    },
+    onLock: () => sound.play("lock"),
+    onGoal: () => {
+      setBurst((b) => b + 1);
+      sound.play("goal");
+      sound.roar();
+    },
+  });
+
+  // The freshest Oracle line owns the bubble; the auto-speak effect below
+  // reads it out when sound is up (first change after mount stays silent).
+  React.useEffect(() => {
+    if (room && oracleFeed[0]) setOracleLine(oracleFeed[0].line);
+  }, [room, oracleFeed]);
+
+  // Real countdowns tick against locks_at; only spin the wheel while a market
+  // is actually open.
+  const hasOpenProp = !!room && liveProps.some((p) => p.state === "open");
+  const [now, setNow] = React.useState(() => Date.now());
+  React.useEffect(() => {
+    if (!hasOpenProp) return;
+    setNow(Date.now());
+    const id = window.setInterval(() => setNow(Date.now()), 250);
+    return () => window.clearInterval(id);
+  }, [hasOpenProp]);
+
+  // Match clock: seeded by every fixture snapshot, ticks between updates.
+  const [liveClockSec, setLiveClockSec] = React.useState<number | null>(null);
+  React.useEffect(() => {
+    if (snapshot?.clockSeconds != null) setLiveClockSec(snapshot.clockSeconds);
+  }, [snapshot]);
+  const phase = snapshot?.phase ?? "pre";
+  const clockRunning = liveClockSec != null && phase !== "pre" && phase !== "ht" && phase !== "ft";
+  React.useEffect(() => {
+    if (!clockRunning) return;
+    const id = window.setInterval(() => setLiveClockSec((s) => (s == null ? s : s + 1)), 1000);
+    return () => window.clearInterval(id);
+  }, [clockRunning]);
+
+  const onLivePick = React.useCallback(
+    async (propId: string, optionId: string) => {
+      const outcome = await sendPick(propId, optionId, {
+        wallet: address ?? undefined,
+        handle: handle ?? undefined,
+      });
+      if (outcome === "ok") {
+        sound.play("tap");
+        setOracleLine(ORACLE_LINES.pick);
+      } else if (outcome === "locked" || outcome === "error") {
+        sound.play("miss");
+      }
+    },
+    [sendPick, address, handle],
+  );
+
+  // Real leaderboard rows (room_members ordered by points in the hook).
+  const board = React.useMemo(
+    () =>
+      members.map((m, i) => ({
+        rank: i + 1,
+        name: m.handle,
+        points: m.points,
+        streak: m.streak,
+        you: userId != null && m.userId === userId,
+      })),
+    [members, userId],
+  );
+
   // The Gaffer speaks over the tannoy: play toggles voice, wave bars follow.
   const toggleOracleVoice = React.useCallback(() => {
     if (oracleVoice.speaking) oracleVoice.stop();
     else oracleVoice.speak(oracleLine);
   }, [oracleLine]);
 
-  // Auto-call fresh lines (goal, lock) when sound is up. speak() cancels any
-  // in-flight utterance, so lines never overlap. Skip the idle line on mount.
+  // Auto-call fresh lines (goal, lock, settle) when sound is up. speak()
+  // cancels any in-flight utterance, so lines never overlap. Skip the first
+  // line after mount (idle copy or realtime hydration).
   const firstLine = React.useRef(true);
   React.useEffect(() => {
     if (firstLine.current) {
@@ -124,20 +300,21 @@ export default function TerracePage() {
   // Cut the mic when leaving the terrace.
   React.useEffect(() => () => oracleVoice.stop(), []);
 
-  // open card: pick + draining lock window
+  // ── DEMO MODE (unknown code) ── local simulation, untouched.
   const [pick, setPick] = React.useState<string | null>(null);
   const [progress, setProgress] = React.useState(1);
   const [openState, setOpenState] = React.useState<PredictionState>("open");
 
-  // match clock ticks
+  // match clock ticks (sim only; real mode follows the fixture snapshot)
   React.useEffect(() => {
+    if (room) return;
     const id = window.setInterval(() => setClockSec((s) => s + 1), 1000);
     return () => window.clearInterval(id);
-  }, []);
+  }, [room]);
 
-  // lock window drains; stamp shut at zero
+  // lock window drains; stamp shut at zero (sim only)
   React.useEffect(() => {
-    if (openState !== "open") return;
+    if (room || openState !== "open") return;
     const step = 250;
     const id = window.setInterval(() => {
       setProgress((p) => {
@@ -153,7 +330,7 @@ export default function TerracePage() {
       });
     }, step);
     return () => window.clearInterval(id);
-  }, [openState]);
+  }, [room, openState]);
 
   const onPick = (name: string) => {
     setPick(name);
@@ -175,9 +352,20 @@ export default function TerracePage() {
     { name: "No more goals", odds: "4.50", picked: pick === "No more goals" },
   ];
 
+  // Header values: real fixture snapshot when live, sim state otherwise.
+  const homeScore = room ? (snapshot?.homeScore ?? 0) : score.home;
+  const awayScore = room ? (snapshot?.awayScore ?? 0) : score.away;
+  const clockLabel = room
+    ? liveClockSec != null
+      ? fmtClock(liveClockSec)
+      : "--:--"
+    : fmtClock(clockSec);
+  const isLive = room ? phase !== "pre" && phase !== "ft" : true;
+  const memberCount = room ? (board.length > 0 ? board.length : room.members) : ROOM_BOARD.length;
+
   return (
     <div className="relative flex flex-1 flex-col">
-      {/* goal burst overlays the whole terrace */}
+      {/* goal / win burst overlays the whole terrace */}
       {burst > 0 && <PixelBurst burstKey={burst} className="fixed inset-x-0 top-24 h-64" />}
 
       {/* one-time welcome strip after an invite-link auto-join */}
@@ -206,7 +394,7 @@ export default function TerracePage() {
       {/* sticky live header */}
       <div className="sticky top-[57px] z-30 bg-bg px-4 pb-2 pt-3">
         <motion.div
-          key={`${score.home}-${score.away}`}
+          key={`${homeScore}-${awayScore}`}
           initial={{ scale: 1.04 }}
           animate={{ scale: 1 }}
           transition={{ type: "spring", stiffness: 400, damping: 25 }}
@@ -214,10 +402,10 @@ export default function TerracePage() {
           <Scoreboard
             home={room ? teamCode(room.fixture.home_team) : "BRA"}
             away={room ? teamCode(room.fixture.away_team) : "ARG"}
-            homeScore={score.home}
-            awayScore={score.away}
-            clock={fmtClock(clockSec)}
-            live
+            homeScore={homeScore}
+            awayScore={awayScore}
+            clock={clockLabel}
+            live={isLive}
           />
         </motion.div>
       </div>
@@ -225,24 +413,26 @@ export default function TerracePage() {
       <div className="flex flex-col gap-3 px-4 pb-6">
         <PotBanner sponsor="Adidas" amount="1,000 USDC" status="funded" />
 
-        {/* room strip: name, headcount, code + dev trigger for the demo goal moment */}
+        {/* room strip: name, headcount, code + (demo only) the sim goal trigger */}
         {room && (
           <div className="flex items-center justify-between gap-2">
             <span className="truncate font-display text-sm uppercase tracking-wide text-text">
               {room.name ?? "TERRACE"}
             </span>
-            <Tag className="shrink-0 text-text-dim">{room.members} IN</Tag>
+            <Tag className="shrink-0 text-text-dim">{memberCount} IN</Tag>
           </div>
         )}
         <div className="flex items-center justify-between">
           <RoomCodeChip code={code} />
-          <button
-            type="button"
-            onClick={fireGoal}
-            className="inline-flex items-center gap-1 rounded-full border border-warn/50 bg-warn/10 px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-wide text-warn transition-colors hover:bg-warn/20"
-          >
-            <Zap size={11} /> sim goal
-          </button>
+          {!room && (
+            <button
+              type="button"
+              onClick={fireGoal}
+              className="inline-flex items-center gap-1 rounded-full border border-warn/50 bg-warn/10 px-2.5 py-1 font-mono text-[10px] font-bold uppercase tracking-wide text-warn transition-colors hover:bg-warn/20"
+            >
+              <Zap size={11} /> sim goal
+            </button>
+          )}
         </div>
 
         {/* tab strip */}
@@ -293,35 +483,62 @@ export default function TerracePage() {
                   onSpeak={toggleOracleVoice}
                 />
 
-                <PredictionCard
-                  prompt="NEXT GOAL?"
-                  options={openOptions}
-                  state={openState}
-                  progress={progress}
-                  onSelect={onPick}
-                />
-
-                <PredictionCard
-                  prompt="CARD THIS HALF?"
-                  options={[
-                    { name: "Yes", odds: "1.40", picked: true },
-                    { name: "No", odds: "2.85" },
-                  ]}
-                  state="win"
-                  points={50}
-                />
-
-                <div className="mt-1">
-                  <div className="mb-2 flex items-baseline justify-between">
-                    <span className="font-display text-sm text-text">THE TABLE</span>
-                    <Tag className="text-text-muted">TOP 4</Tag>
-                  </div>
-                  <div className="space-y-2">
-                    {ROOM_BOARD.slice(0, 4).map((r) => (
-                      <LeaderboardRow key={r.name} {...r} />
+                {room ? (
+                  <>
+                    {propsLoaded && liveProps.length === 0 && (
+                      <Card className="flex flex-col items-center gap-2 border-2 border-border-strong p-6 text-center">
+                        <LiveDot label="ON WATCH" />
+                        <p className="font-display text-sm text-text">The Oracle is watching.</p>
+                        <p className="text-xs text-text-muted">
+                          Markets open when the ball rolls.
+                        </p>
+                      </Card>
+                    )}
+                    {liveProps.map((p) => (
+                      <LivePropCard
+                        key={p.id}
+                        prop={p}
+                        myPick={myPicks[p.id]}
+                        now={now}
+                        onPick={onLivePick}
+                      />
                     ))}
+                  </>
+                ) : (
+                  <>
+                    <PredictionCard
+                      prompt="NEXT GOAL?"
+                      options={openOptions}
+                      state={openState}
+                      progress={progress}
+                      onSelect={onPick}
+                    />
+
+                    <PredictionCard
+                      prompt="CARD THIS HALF?"
+                      options={[
+                        { name: "Yes", odds: "1.40", picked: true },
+                        { name: "No", odds: "2.85" },
+                      ]}
+                      state="win"
+                      points={50}
+                    />
+                  </>
+                )}
+
+                {(room ? board.length > 0 : true) && (
+                  <div className="mt-1">
+                    <div className="mb-2 flex items-baseline justify-between">
+                      <span className="font-display text-sm text-text">THE TABLE</span>
+                      <Tag className="text-text-muted">TOP 4</Tag>
+                    </div>
+                    <div className="space-y-2">
+                      {(room ? board : ROOM_BOARD).slice(0, 4).map((r) => (
+                        <LeaderboardRow key={`${r.rank}-${r.name}`} {...r} />
+                      ))}
+                    </div>
                   </div>
-                </div>
+                )}
               </>
             )}
 
@@ -329,9 +546,11 @@ export default function TerracePage() {
               <>
                 <div className="flex items-baseline justify-between">
                   <span className="font-display text-sm text-text">ROOM TABLE</span>
-                  <Tag className="text-text-muted">{ROOM_BOARD.length} IN</Tag>
+                  <Tag className="text-text-muted">
+                    {room ? board.length : ROOM_BOARD.length} IN
+                  </Tag>
                 </div>
-                <LeaderboardTable rows={ROOM_BOARD} />
+                <LeaderboardTable rows={room ? board : ROOM_BOARD} />
                 <p className="text-center text-xs text-text-muted">
                   Leader claims the pot when the whistle&apos;s data is verified.
                 </p>
@@ -347,11 +566,19 @@ export default function TerracePage() {
                   speakable
                   onSpeak={toggleOracleVoice}
                 />
-                <OracleBubble
-                  persona="THE GAFFER"
-                  line="VAR had a look at that tackle. Points frozen till it's final, that's the rule."
-                />
-                <OracleBubble persona="THE GAFFER" line={ORACLE_LINES.settle} />
+                {room ? (
+                  oracleFeed.slice(1).map((e, i) => (
+                    <OracleBubble key={`${i}-${e.line}`} persona="THE GAFFER" line={e.line} />
+                  ))
+                ) : (
+                  <>
+                    <OracleBubble
+                      persona="THE GAFFER"
+                      line="VAR had a look at that tackle. Points frozen till it's final, that's the rule."
+                    />
+                    <OracleBubble persona="THE GAFFER" line={ORACLE_LINES.settle} />
+                  </>
+                )}
                 <p className="px-2 text-center text-xs text-text-muted">
                   The Gaffer calls it off signed TxLINE data. Every settle is anchored on Solana.
                 </p>
