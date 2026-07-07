@@ -1,28 +1,57 @@
 /* ── KICK.FUN ingest worker ──
-   The engine: TxLINE in, normalized events + Oracle lines + props out.
-   MVP loop (poll-based; SSE swap-in once stream paths are confirmed):
-     fixtures -> pick active/next fixture -> poll scores snapshot ->
-     normalize -> diff -> finality gate -> oracle line + props engine ->
-     Supabase + stdout
-   Persistence (apps/ingest/src/db.ts): fixtures upsert on boot, snapshot +
-   status per poll, oracle_events fan-out per line, props/picks/points via
-   the props engine (apps/ingest/src/props.ts). Snapshot/oracle writes are
-   fire-and-forget; the props engine awaits its writes (they carry points and
-   must stay ordered) but every helper is non-throwing, so a Supabase outage
-   never stalls the poll loop.
 
-   Run: pnpm --filter @kick/ingest dev
-   (env auto-loads from the repo-root .env; TXLINE_JWT optional, the worker
-   acquires a fresh guest JWT if missing. INGEST_MAX_TICKS=N exits after N
-   polls, for smoke tests. INGEST_SIM=1 runs DEMO MODE: a scripted local
-   fixture, no TxLINE, sped up INGEST_SIM_SPEED x (default 10) so the whole
-   prop lifecycle plays out in under a minute.) */
+   ══ DEPLOYMENT ══
+   This worker must run 24/7 for the product DB to stay live. It is the ONLY
+   writer of fixtures.status / fixtures.last_snapshot / oracle_events / props
+   / picks / points_ledger: if the process is not running, every fixture,
+   score, and status in Supabase FREEZES at the moment of the last run (which
+   is exactly how finished matches were stuck as "live" with null snapshots).
+   Host it on Railway, Fly, or any VPS; it is a plain long-lived Node process,
+   NOT serverless:
+
+     INGEST_POLL_MS=60000 pnpm --filter @kick/ingest start
+
+   60s polling matches the SL1 service level (data is 60s-delayed anyway) and
+   keeps quota headroom. Required env (repo-root .env locally; real env vars
+   in the host):
+     NEXT_PUBLIC_SUPABASE_URL     Supabase project URL
+     SUPABASE_SERVICE_ROLE_KEY    service-role key (worker is the write path)
+     TXLINE_API_TOKEN             activated TxLINE API token (free tier)
+     TXLINE_BASE_URL              optional, default https://txline-dev.txodds.com
+     TXLINE_JWT                   optional; a fresh guest JWT is acquired when absent
+   Tuning env:
+     INGEST_POLL_MS      poll interval ms (default 15000; use 60000 in prod)
+     INGEST_MAX_WATCH    max fixtures polled per tick (default 6)
+     INGEST_SINGLE=1     legacy fallback: camp on one fixture only
+     INGEST_MAX_TICKS=N  exit after N ticks (smoke tests)
+     INGEST_SIM=1        demo mode, no TxLINE (INGEST_SIM_SPEED x, default 10)
+   Crash-safety: fixture/status writes are idempotent upserts and the props
+   engine rehydrates from the DB on boot, so `restart: always` is enough.
+
+   ══ LOOP ══
+   TxLINE in, normalized events + Oracle lines + props out. Each tick the
+   worker polls EVERY fixture that is live or kicking off within 15 minutes
+   (capped at INGEST_MAX_WATCH; probed July 7 2026: SL1 free tier showed no
+   rate limiting at 12 sequential + 6 concurrent snapshot calls, and TxODDS
+   documents no rate limits on the hackathon tier). Odds snapshots are polled
+   every OTHER tick per watched fixture to halve quota, feeding implied home
+   win probability into detectOddsSwing so odds_swing props fire on real
+   matches. Fixture list re-syncs from TxLINE every FIXTURE_REFRESH_TICKS.
+
+   Persistence (db.ts): fixtures upsert on boot/refresh, snapshot + status
+   per poll, oracle_events fan-out per line, props/picks/points via the props
+   engine (props.ts), all keyed per fixture so concurrent watches cannot
+   cross-talk. Snapshot/oracle writes are fire-and-forget; the props engine
+   awaits its writes (they carry points and must stay ordered) but every
+   helper is non-throwing, so a Supabase outage never stalls the poll loop.
+
+   Run: pnpm --filter @kick/ingest dev */
 
 import { loadRootEnv } from "./env.js";
 loadRootEnv();
 
 import { TxLineClient } from "@kick/txline-client";
-import { diffStates, judge, type Candidate, type MatchEvent, type MatchPhase, type MatchState } from "@kick/shared";
+import { diffStates, judge, type Candidate, type MatchEvent, type MatchState } from "@kick/shared";
 import { speak } from "@kick/oracle";
 import {
   ensureSimFixtureAndRoom,
@@ -32,6 +61,7 @@ import {
   upsertFixtures,
   type TxLineFixtureRow,
 } from "./db.js";
+import { impliedHomeFromOdds, normalizeScores } from "./normalize.js";
 import { PropsEngine } from "./props.js";
 import { SIM_AWAY, SIM_FIXTURE_ID, SIM_HOME, SIM_ROOM_CODE, simStateAt } from "./sim.js";
 
@@ -40,89 +70,21 @@ const POLL_MS = Number(process.env.INGEST_POLL_MS ?? 15_000);
 const MAX_TICKS = Number(process.env.INGEST_MAX_TICKS ?? 0); // 0 = run forever
 const SIM = process.env.INGEST_SIM === "1";
 const SIM_SPEED = Math.max(1, Number(process.env.INGEST_SIM_SPEED ?? 10));
+const SINGLE = process.env.INGEST_SINGLE === "1";
+/** Fixtures polled per tick, max. Probed safe well beyond this (see DEPLOYMENT). */
+const MAX_WATCH = Math.max(1, Number(process.env.INGEST_MAX_WATCH ?? 6));
+/** Start polling a fixture this long before kickoff. */
+const PREKICK_MS = 15 * 60_000;
+/** Re-fetch the TxLINE fixture list every N ticks (status + new match days). */
+const FIXTURE_REFRESH_TICKS = 20;
+/** Stagger between per-fixture polls inside one tick (politeness, not a limit). */
+const STAGGER_MS = 250;
 
-/** One polled reading: the normalized state plus, when the odds stream
-    flows, the home side's implied win probability (feeds odds_swing props). */
+/** One polled reading: the normalized state plus, on odds ticks, the home
+    side's implied win probability (feeds odds_swing props). */
 interface Reading {
   state: MatchState;
   impliedHome?: number;
-}
-
-interface Source {
-  fixtureId: number;
-  label: string;
-  /** Wall-clock compression for locks + finality buffer (sim only). */
-  timeScale: number;
-  read: (now: number) => Promise<Reading>;
-}
-
-/* ── Scores snapshot payload (confirmed live July 6 2026, probe scripts) ──
-   /api/scores/snapshot/{id} returns an ARRAY of update rows, one per action
-   kind (kickoff, goal, corner, status, game_finalised, ...), NOT a single
-   flat object. The per-row string `GameState` is stale ("scheduled" even on
-   finished matches); the live phase signal is the integer `StatusId`:
-     1 = pre-match      (jersey/pitch/warm-up rows, clock stopped at 0)
-     2 = first half     (var rows at clock 643s/715s)
-     3 = half time      (halftime_finalised)
-     4 = second half    (clock 45:00+..)
-     5 = full time      (status/clock_adjustment rows, clock stopped at 0)
-   100 = finalised      (game_finalised / disconnected)
-   Scores + corners live in `Score.ParticipantN.Total`. */
-const PHASE_BY_STATUS_ID: Record<number, MatchPhase> = {
-  1: "pre",
-  2: "first_half",
-  3: "half_time",
-  4: "second_half",
-  5: "full_time",
-  100: "full_time",
-};
-
-interface ScoreTotals {
-  Total?: { Goals?: number; Corners?: number };
-}
-interface ScoresUpdateRow {
-  Ts?: number;
-  StatusId?: number;
-  Clock?: { Running?: boolean; Seconds?: number };
-  Score?: { Participant1?: ScoreTotals; Participant2?: ScoreTotals };
-}
-
-function normalize(fix: TxLineFixtureRow, raw: unknown, asOf: number): MatchState {
-  const rows = (Array.isArray(raw) ? raw : raw ? [raw] : []) as ScoresUpdateRow[];
-  const latest = (pick: (r: ScoresUpdateRow) => boolean): ScoresUpdateRow | undefined =>
-    rows.filter(pick).sort((a, b) => (b.Ts ?? 0) - (a.Ts ?? 0))[0];
-
-  const phaseRow = latest((r) => typeof r.StatusId === "number");
-  const scoreRow = latest((r) => r.Score !== undefined);
-  const clockRow = latest((r) => typeof r.Clock?.Seconds === "number");
-
-  // Phase from the newest StatusId; kickoff-time fallback when the feed has
-  // no status rows yet (upcoming fixtures serve only comment/coverage rows).
-  let phase = phaseRow ? PHASE_BY_STATUS_ID[phaseRow.StatusId!] : undefined;
-  if (!phase) {
-    const kickoffMs = fix.StartTime > 1e12 ? fix.StartTime : fix.StartTime * 1000;
-    if (kickoffMs > asOf) phase = "pre";
-    else phase = asOf - kickoffMs > 3 * 3_600_000 ? "full_time" : "first_half";
-  }
-
-  const p1 = scoreRow?.Score?.Participant1?.Total;
-  const p2 = scoreRow?.Score?.Participant2?.Total;
-  const [homeT, awayT] = fix.Participant1IsHome ? [p1, p2] : [p2, p1];
-
-  return {
-    fixtureId: fix.FixtureId,
-    home: fix.Participant1IsHome ? fix.Participant1 : fix.Participant2,
-    away: fix.Participant1IsHome ? fix.Participant2 : fix.Participant1,
-    homeScore: homeT?.Goals ?? 0,
-    awayScore: awayT?.Goals ?? 0,
-    phase,
-    clockSeconds: clockRow?.Clock?.Seconds ?? null,
-    stats: {
-      corners_home: homeT?.Corners ?? 0,
-      corners_away: awayT?.Corners ?? 0,
-    },
-    asOf,
-  };
 }
 
 /* Fire-and-forget persistence: log, never throw, never await in the loop. */
@@ -130,7 +92,92 @@ function persist<T>(label: string, p: Promise<T>): void {
   p.catch((err: unknown) => console.error(`[db] ${label} rejected:`, err instanceof Error ? err.message : err));
 }
 
-async function liveSource(): Promise<Source> {
+/* ── Watcher: the full per-fixture pipeline ──
+   diff -> oracle lines -> props engine -> finality gate. One instance per
+   watched fixture; props/oracle fan-out in db.ts is keyed by fixture id, so
+   watchers never cross-talk. */
+class Watcher {
+  private prev: MatchState | null = null;
+  private readonly pending: Candidate[] = [];
+  private readonly history: MatchEvent[] = [];
+  private readonly engine: PropsEngine;
+
+  constructor(
+    readonly fixtureId: number,
+    readonly label: string,
+    private readonly timeScale: number,
+  ) {
+    this.engine = new PropsEngine({
+      fixtureId,
+      timeScale,
+      exactScoreProps: process.env.INGEST_EXACT_SCORE_PROPS === "1",
+    });
+  }
+
+  async step({ state, impliedHome }: Reading, now: number): Promise<void> {
+    const tag = `[${this.fixtureId}]`;
+    persist(`updateFixtureSnapshot(${this.fixtureId})`, updateFixtureSnapshot(this.fixtureId, state));
+
+    const events = this.prev ? diffStates(this.prev, state) : [];
+    for (const ev of events) {
+      this.history.push(ev);
+      console.log(`${tag} [event] ${ev.type} ${ev.side ?? ""}`);
+      if (ev.type === "goal") this.pending.push({ key: `goal:${ev.side}:${now}`, event: ev, seenAt: now });
+      const line = speak(ev, { homeTeam: state.home, awayTeam: state.away });
+      if (line) {
+        console.log(`${tag} [oracle:${line.persona}] ${line.text}`);
+        persist("insertOracleEvent", insertOracleEvent(this.fixtureId, ev.type, line.text));
+      }
+    }
+
+    // props lifecycle: generate, lock, settle, award points. Awaited: the
+    // writes carry points and must stay ordered; every helper inside is
+    // non-throwing, so this cannot kill the loop.
+    await this.engine.onTick(state, events, now, impliedHome);
+
+    // finality gate pass (Oracle settlement lines; props run their own)
+    for (let i = this.pending.length - 1; i >= 0; i--) {
+      const verdict = judge(this.pending[i]!, this.history, now, 90_000 / this.timeScale);
+      if (verdict !== "pending") {
+        console.log(`${tag} [finality] ${this.pending[i]!.key} -> ${verdict}`);
+        if (verdict === "final") {
+          const line = speak({ type: "settlement", asOf: now });
+          if (line) {
+            console.log(`${tag} [oracle] ${line.text}`);
+            persist("insertOracleEvent", insertOracleEvent(this.fixtureId, "settlement", line.text));
+          }
+          // TODO: submit settle_room via program client at full time.
+        }
+        this.pending.splice(i, 1);
+      }
+    }
+
+    this.prev = state;
+  }
+}
+
+function fixtureLabel(f: TxLineFixtureRow): string {
+  return `${f.Participant1} v ${f.Participant2} (fixture ${f.FixtureId})`;
+}
+
+function kickoffMs(f: TxLineFixtureRow): number {
+  return f.StartTime > 1e12 ? f.StartTime : f.StartTime * 1000;
+}
+
+/** Fixtures worth polling this tick: live first, then kicking off within
+    PREKICK_MS, capped at MAX_WATCH. When nothing qualifies, fall back to the
+    single next-upcoming fixture so its status flips promptly at kickoff. */
+function selectWatchlist(fixtures: TxLineFixtureRow[], now: number): TxLineFixtureRow[] {
+  const sorted = [...fixtures].sort((a, b) => a.StartTime - b.StartTime);
+  const live = sorted.filter((f) => statusFromFixture(f, now) === "live");
+  const soon = sorted.filter((f) => statusFromFixture(f, now) === "upcoming" && kickoffMs(f) - now <= PREKICK_MS);
+  const picked = [...live, ...soon].slice(0, MAX_WATCH);
+  if (picked.length > 0) return picked;
+  const next = sorted.find((f) => statusFromFixture(f, now) === "upcoming");
+  return next ? [next] : [];
+}
+
+async function runLive(): Promise<void> {
   const client = new TxLineClient({
     baseUrl: BASE,
     jwt: process.env.TXLINE_JWT,
@@ -140,36 +187,99 @@ async function liveSource(): Promise<Source> {
     await client.startGuestSession();
     console.log("[auth] fresh guest JWT acquired");
   }
-  console.log(`[ingest] up against ${BASE}, poll every ${POLL_MS}ms`);
+  console.log(`[ingest] up against ${BASE}, poll every ${POLL_MS}ms, watch cap ${SINGLE ? 1 : MAX_WATCH}`);
 
-  const fixtures = (await client.fixtures({ startEpochDay: epochDayToday() })) as TxLineFixtureRow[];
-  console.log(`[fixtures] ${fixtures.length} World Cup fixtures loaded`);
-  const written = await upsertFixtures(fixtures);
-  if (written > 0) console.log(`[db] ${written} fixtures upserted`);
-
-  // Watch the match that matters: a live one first, else the next kickoff.
-  // Never camp on a finished fixture (the old sort-and-take-first did, which
-  // is how a fixture stayed "live" in the UI long after full time).
-  const sorted = fixtures.sort((a, b) => a.StartTime - b.StartTime);
-  const target =
-    sorted.find((f) => statusFromFixture(f) === "live") ??
-    sorted.find((f) => statusFromFixture(f) === "upcoming") ??
-    sorted[sorted.length - 1];
-  if (!target) throw new Error("no fixtures returned");
-  return {
-    fixtureId: target.FixtureId,
-    label: `${target.Participant1} v ${target.Participant2} (fixture ${target.FixtureId})`,
-    timeScale: 1,
-    read: async (now) => {
-      const raw = await client.scoresSnapshot(target.FixtureId);
-      // impliedHome: TODO(odds stream) wire the StablePrice odds snapshot in
-      // here; until then live odds_swing props simply never trigger.
-      return { state: normalize(target, raw, now) };
-    },
+  const loadFixtures = async (): Promise<TxLineFixtureRow[]> => {
+    // Reach one day back so a match straddling midnight UTC stays watched.
+    const rows = (await client.fixtures({ startEpochDay: epochDayToday() - 1 })) as TxLineFixtureRow[];
+    const written = await upsertFixtures(rows);
+    if (written > 0) console.log(`[db] ${written} fixtures upserted`);
+    return rows;
   };
+
+  let fixtures = await loadFixtures();
+  console.log(`[fixtures] ${fixtures.length} World Cup fixtures loaded`);
+  if (fixtures.length === 0) throw new Error("no fixtures returned");
+
+  // Legacy single-fixture fallback (INGEST_SINGLE=1): pick one target at
+  // boot, live first, else next kickoff, and camp on it.
+  let singleTarget: TxLineFixtureRow | null = null;
+  if (SINGLE) {
+    const sorted = [...fixtures].sort((a, b) => a.StartTime - b.StartTime);
+    singleTarget =
+      sorted.find((f) => statusFromFixture(f) === "live") ??
+      sorted.find((f) => statusFromFixture(f) === "upcoming") ??
+      sorted[sorted.length - 1]!;
+    console.log(`[watch] single mode: ${fixtureLabel(singleTarget)}`);
+  }
+
+  const watchers = new Map<number, Watcher>();
+
+  for (let tick = 1; ; tick++) {
+    try {
+      const now = Date.now();
+      if (tick % FIXTURE_REFRESH_TICKS === 0) {
+        try {
+          fixtures = await loadFixtures();
+        } catch (err) {
+          console.error("[fixtures] refresh failed:", err instanceof Error ? err.message : err);
+        }
+      }
+
+      const targets = singleTarget ? [singleTarget] : selectWatchlist(fixtures, now);
+      const names = targets.map((f) => fixtureLabel(f)).join(" | ");
+      console.log(`[tick ${tick}] watching ${targets.length} fixture(s): ${names || "none"}`);
+
+      // Odds every other tick per fixture to halve quota; snapshot has the
+      // full market board, we only need the 1X2 implied home probability.
+      const oddsTick = tick % 2 === 1;
+      for (const [i, fix] of targets.entries()) {
+        if (i > 0) await new Promise((r) => setTimeout(r, STAGGER_MS));
+        try {
+          const raw = await client.scoresSnapshot(fix.FixtureId);
+          const reading: Reading = { state: normalizeScores(fix, raw, now) };
+          if (oddsTick) {
+            try {
+              reading.impliedHome = impliedHomeFromOdds(await client.oddsSnapshot(fix.FixtureId), fix.Participant1IsHome);
+              if (reading.impliedHome !== undefined) {
+                console.log(`[${fix.FixtureId}] [odds] implied home ${(reading.impliedHome * 100).toFixed(1)}%`);
+              }
+            } catch (err) {
+              console.error(`[${fix.FixtureId}] [odds] snapshot failed:`, err instanceof Error ? err.message : err);
+            }
+          }
+          let watcher = watchers.get(fix.FixtureId);
+          if (!watcher) {
+            watcher = new Watcher(fix.FixtureId, fixtureLabel(fix), 1);
+            watchers.set(fix.FixtureId, watcher);
+            console.log(`[watch] + ${watcher.label}`);
+          }
+          await watcher.step(reading, Date.now());
+        } catch (err) {
+          console.error(`[${fix.FixtureId}] [poll error]`, err instanceof Error ? err.message : err);
+        }
+      }
+
+      // Retire watchers for fixtures no longer selected (finished/rotated).
+      const keep = new Set(targets.map((f) => f.FixtureId));
+      for (const id of watchers.keys()) {
+        if (!keep.has(id)) {
+          console.log(`[watch] - fixture ${id} retired`);
+          watchers.delete(id);
+        }
+      }
+    } catch (err) {
+      console.error("[tick error]", err instanceof Error ? err.message : err);
+    }
+    if (MAX_TICKS > 0 && tick >= MAX_TICKS) {
+      console.log(`[ingest] INGEST_MAX_TICKS=${MAX_TICKS} reached, exiting`);
+      return;
+    }
+    await new Promise((r) => setTimeout(r, POLL_MS));
+  }
 }
 
-async function simSource(): Promise<Source> {
+async function runSim(): Promise<void> {
   const roomId = await ensureSimFixtureAndRoom({
     fixtureId: SIM_FIXTURE_ID,
     home: SIM_HOME,
@@ -182,70 +292,14 @@ async function simSource(): Promise<Source> {
       : "[sim] Supabase unavailable; running log-only",
   );
   const startedAt = Date.now();
-  return {
-    fixtureId: SIM_FIXTURE_ID,
-    label: `${SIM_HOME} v ${SIM_AWAY} (SIM fixture ${SIM_FIXTURE_ID})`,
-    timeScale: SIM_SPEED,
-    read: async (now) => simStateAt(((now - startedAt) / 1000) * SIM_SPEED, now),
-  };
-}
-
-async function main() {
-  const src = SIM ? await simSource() : await liveSource();
-  console.log(`[watch] ${src.label}`);
-
-  const engine = new PropsEngine({
-    fixtureId: src.fixtureId,
-    timeScale: src.timeScale,
-    exactScoreProps: process.env.INGEST_EXACT_SCORE_PROPS === "1",
-  });
-
-  let prev: MatchState | null = null;
-  const pending: Candidate[] = [];
-  const history: MatchEvent[] = [];
+  const watcher = new Watcher(SIM_FIXTURE_ID, `${SIM_HOME} v ${SIM_AWAY} (SIM fixture ${SIM_FIXTURE_ID})`, SIM_SPEED);
+  console.log(`[watch] ${watcher.label}`);
 
   for (let tick = 1; ; tick++) {
     try {
       const now = Date.now();
-      const { state, impliedHome } = await src.read(now);
-
-      persist(`updateFixtureSnapshot(${src.fixtureId})`, updateFixtureSnapshot(src.fixtureId, state));
-
-      const events = prev ? diffStates(prev, state) : [];
-      for (const ev of events) {
-        history.push(ev);
-        console.log(`[event] ${ev.type} ${ev.side ?? ""}`);
-        if (ev.type === "goal") pending.push({ key: `goal:${ev.side}:${now}`, event: ev, seenAt: now });
-        const line = speak(ev, { homeTeam: state.home, awayTeam: state.away });
-        if (line) {
-          console.log(`[oracle:${line.persona}] ${line.text}`);
-          persist("insertOracleEvent", insertOracleEvent(src.fixtureId, ev.type, line.text));
-        }
-      }
-
-      // props lifecycle: generate, lock, settle, award points. Awaited: the
-      // writes carry points and must stay ordered; every helper inside is
-      // non-throwing, so this cannot kill the loop.
-      await engine.onTick(state, events, now, impliedHome);
-
-      // finality gate pass (Oracle settlement lines; props run their own)
-      for (let i = pending.length - 1; i >= 0; i--) {
-        const verdict = judge(pending[i]!, history, now, 90_000 / src.timeScale);
-        if (verdict !== "pending") {
-          console.log(`[finality] ${pending[i]!.key} -> ${verdict}`);
-          if (verdict === "final") {
-            const line = speak({ type: "settlement", asOf: now });
-            if (line) {
-              console.log(`[oracle] ${line.text}`);
-              persist("insertOracleEvent", insertOracleEvent(src.fixtureId, "settlement", line.text));
-            }
-            // TODO: submit settle_room via program client at full time.
-          }
-          pending.splice(i, 1);
-        }
-      }
-
-      prev = state;
+      const reading = simStateAt(((now - startedAt) / 1000) * SIM_SPEED, now);
+      await watcher.step(reading, now);
     } catch (err) {
       console.error("[poll error]", err instanceof Error ? err.message : err);
     }
@@ -261,7 +315,7 @@ function epochDayToday(): number {
   return Math.floor(Date.now() / 86_400_000);
 }
 
-main().catch((e) => {
+(SIM ? runSim() : runLive()).catch((e) => {
   console.error(e);
   process.exit(1);
 });

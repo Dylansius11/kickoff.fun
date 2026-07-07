@@ -59,6 +59,59 @@ export interface RoomInfo {
   };
 }
 
+/** All rooms a user is a member of (newest join first), each with fixture +
+    live member count. Powers GET /api/me/rooms and the terrace index page. */
+export async function fetchRoomsForUser(
+  admin: SupabaseClient,
+  userId: string,
+): Promise<RoomInfo[]> {
+  const { data, error } = await admin
+    .from("room_members")
+    .select(
+      "joined_at, room:rooms(id, room_code, name, status, visibility, fixture:fixtures(id, home_team, away_team, group_round, kickoff_at, status))",
+    )
+    .eq("user_id", userId)
+    .order("joined_at", { ascending: false });
+  if (error) throw new Error(`member rooms lookup failed: ${error.message}`);
+
+  const rooms: RoomInfo[] = [];
+  for (const row of (data ?? []) as Record<string, unknown>[]) {
+    const roomRaw = row["room"];
+    const room = (Array.isArray(roomRaw) ? roomRaw[0] : roomRaw) as
+      | Record<string, unknown>
+      | null
+      | undefined;
+    if (!room) continue;
+    const fixtureRaw = room["fixture"];
+    const fixture = Array.isArray(fixtureRaw) ? fixtureRaw[0] : fixtureRaw;
+    if (!fixture) continue;
+    rooms.push({
+      roomId: room["id"] as string,
+      code: room["room_code"] as string,
+      name: (room["name"] as string | null) ?? null,
+      status: room["status"] as string,
+      visibility: room["visibility"] as string,
+      members: 0,
+      fixture: fixture as RoomInfo["fixture"],
+    });
+  }
+
+  // one batched count query instead of N head-counts
+  if (rooms.length > 0) {
+    const { data: memberRows } = await admin
+      .from("room_members")
+      .select("room_id")
+      .in("room_id", rooms.map((r) => r.roomId));
+    const counts = new Map<string, number>();
+    for (const m of (memberRows ?? []) as { room_id: string }[]) {
+      counts.set(m.room_id, (counts.get(m.room_id) ?? 0) + 1);
+    }
+    for (const r of rooms) r.members = counts.get(r.roomId) ?? 0;
+  }
+
+  return rooms;
+}
+
 /** Room + fixture + live member count, or null when the code is unknown. */
 export async function fetchRoomInfo(admin: SupabaseClient, code: string): Promise<RoomInfo | null> {
   const { data: room } = await admin

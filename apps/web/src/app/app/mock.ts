@@ -86,11 +86,17 @@ export interface Cosmetic {
   kind: "voice" | "skin" | "badge";
   cost: number;
   unlocked: boolean;
+  /** Oracle persona this voice equips (voice cosmetics only). */
+  persona?: "gaffer" | "announcer" | "analyst";
 }
 
+/* All three Oracle voices are unlocked for the demo build so judges can flip
+   between them live; real progression would gate ANNOUNCER and ANALYST
+   behind their glory cost. */
 export const COSMETICS: Cosmetic[] = [
-  { name: "THE GAFFER voice", kind: "voice", cost: 0, unlocked: true },
-  { name: "Calm Analyst voice", kind: "voice", cost: 2500, unlocked: false },
+  { name: "THE GAFFER", kind: "voice", cost: 0, unlocked: true, persona: "gaffer" },
+  { name: "THE ANNOUNCER", kind: "voice", cost: 1800, unlocked: true, persona: "announcer" },
+  { name: "THE ANALYST", kind: "voice", cost: 2500, unlocked: true, persona: "analyst" },
   { name: "Chalk Frame", kind: "skin", cost: 1200, unlocked: true },
   { name: "VAR Static skin", kind: "skin", cost: 3000, unlocked: false },
   { name: "Golden Boot badge", kind: "badge", cost: 5000, unlocked: false },

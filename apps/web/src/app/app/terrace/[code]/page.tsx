@@ -25,6 +25,7 @@ import {
 import { ORACLE_LINES, ROOM_BOARD } from "../../mock";
 import { teamCode } from "../../../../lib/team-code";
 import { useKickUser } from "../../../../lib/auth";
+import { getPersona, personaDelivery, personaLabel, type Persona } from "../../../../lib/persona";
 import { hasJoined, markJoined } from "../../../../lib/invite";
 import { useTerraceLive, type LiveProp } from "../../../../lib/use-terrace";
 
@@ -279,11 +280,21 @@ export default function TerracePage() {
     [members, userId],
   );
 
-  // The Gaffer speaks over the tannoy: play toggles voice, wave bars follow.
+  // Selected Oracle voice (Locker cosmetic). Lines in oracleFeed are
+  // generated server-side by the ingest worker with a fixed persona, so the
+  // pick can only shape DELIVERY (TTS rate/pitch) and the bubble label here,
+  // not the wording itself.
+  const [persona, setPersonaState] = React.useState<Persona>("gaffer");
+  React.useEffect(() => setPersonaState(getPersona()), []);
+  // Real rooms show the equipped voice on the bubble; the sim keeps its
+  // scripted Gaffer copy, so the label stays honest there.
+  const bubblePersona = room ? personaLabel(persona) : "THE GAFFER";
+
+  // The Oracle speaks over the tannoy: play toggles voice, wave bars follow.
   const toggleOracleVoice = React.useCallback(() => {
     if (oracleVoice.speaking) oracleVoice.stop();
-    else oracleVoice.speak(oracleLine);
-  }, [oracleLine]);
+    else oracleVoice.speak(oracleLine, personaDelivery(persona));
+  }, [oracleLine, persona]);
 
   // Auto-call fresh lines (goal, lock, settle) when sound is up. speak()
   // cancels any in-flight utterance, so lines never overlap. Skip the first
@@ -294,8 +305,8 @@ export default function TerracePage() {
       firstLine.current = false;
       return;
     }
-    if (sound.volume > 0) oracleVoice.speak(oracleLine);
-  }, [oracleLine]);
+    if (sound.volume > 0) oracleVoice.speak(oracleLine, personaDelivery(persona));
+  }, [oracleLine, persona]);
 
   // Cut the mic when leaving the terrace.
   React.useEffect(() => () => oracleVoice.stop(), []);
@@ -476,7 +487,7 @@ export default function TerracePage() {
             {tab === "PREDICT" && (
               <>
                 <OracleBubble
-                  persona="THE GAFFER"
+                  persona={bubblePersona}
                   line={oracleLine}
                   speaking={oracleSpeaking}
                   speakable
@@ -560,7 +571,7 @@ export default function TerracePage() {
             {tab === "ORACLE" && (
               <>
                 <OracleBubble
-                  persona="THE GAFFER"
+                  persona={bubblePersona}
                   line={oracleLine}
                   speaking={oracleSpeaking}
                   speakable
@@ -568,7 +579,7 @@ export default function TerracePage() {
                 />
                 {room ? (
                   oracleFeed.slice(1).map((e, i) => (
-                    <OracleBubble key={`${i}-${e.line}`} persona="THE GAFFER" line={e.line} />
+                    <OracleBubble key={`${i}-${e.line}`} persona={bubblePersona} line={e.line} />
                   ))
                 ) : (
                   <>

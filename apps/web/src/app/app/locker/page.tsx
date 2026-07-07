@@ -4,9 +4,16 @@ import * as React from "react";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
 import { Lock, Check, Wallet, LogOut, LogIn, ChevronRight } from "lucide-react";
-import { Avatar, Card, CountUp, Mono, Skeleton, StreakFlame, Tag, Button } from "@kick/ui";
+import { Avatar, Card, CountUp, Mono, Skeleton, StreakFlame, Tag, Button, sound, oracleVoice } from "@kick/ui";
 import { COSMETICS, YOU, type Cosmetic } from "../mock";
 import { useKickUser, shortAddress } from "@/lib/auth";
+import {
+  getPersona,
+  setPersona,
+  personaDelivery,
+  personaPreview,
+  type Persona,
+} from "@/lib/persona";
 import { teamCode } from "@/lib/team-code";
 import { formatKickoff } from "@/lib/format-kickoff";
 import { useHistoryIdentity, useMatchHistory, type HistoryEntry } from "@/lib/use-history";
@@ -31,13 +38,30 @@ function pixelsFor(name: string) {
   });
 }
 
-function CosmeticCard({ c }: { c: Cosmetic }) {
+function CosmeticCard({
+  c,
+  equipped = false,
+  onEquip,
+}: {
+  c: Cosmetic;
+  /** True when this voice cosmetic is the selected Oracle persona. */
+  equipped?: boolean;
+  /** Present on owned voice cosmetics: tap to equip and hear a preview. */
+  onEquip?: () => void;
+}) {
   const px = pixelsFor(c.name);
+  const pickable = !!onEquip && c.unlocked;
   return (
     <Card
+      interactive={pickable}
+      onClick={pickable ? onEquip : undefined}
       className={
         "flex flex-col gap-2 p-3 " +
-        (c.unlocked ? "border-pitch-700" : "opacity-60")
+        (equipped
+          ? "border-pitch-700 ring-2 ring-pitch"
+          : c.unlocked
+            ? "border-pitch-700"
+            : "opacity-60")
       }
     >
       <div
@@ -51,7 +75,9 @@ function CosmeticCard({ c }: { c: Cosmetic }) {
       <div className="min-h-8 text-xs font-bold leading-tight text-text">{c.name}</div>
       <div className="flex items-center justify-between">
         <Tag className="text-text-muted">{c.kind}</Tag>
-        {c.unlocked ? (
+        {equipped ? (
+          <Tag className="border-pitch-700 text-win">EQUIPPED</Tag>
+        ) : c.unlocked ? (
           <span className="inline-flex items-center gap-1 text-xs text-win">
             <Check size={12} /> owned
           </span>
@@ -142,6 +168,18 @@ function MatchHistorySection() {
 export default function LockerPage() {
   const { ready, authenticated, handle, address, login, logout } = useKickUser();
   const name = authenticated && handle ? handle : YOU;
+
+  // Oracle voice picker: server renders the default, then hydrate the saved
+  // choice so SSR markup never mismatches.
+  const [persona, setPersonaState] = React.useState<Persona>("gaffer");
+  React.useEffect(() => setPersonaState(getPersona()), []);
+  const equipVoice = React.useCallback((p: Persona) => {
+    setPersona(p);
+    setPersonaState(p);
+    sound.play("tap");
+    // Audition line in the voice's own delivery so the pick is heard, not read.
+    oracleVoice.speak(personaPreview(p), personaDelivery(p));
+  }, []);
   return (
     <motion.div
       variants={container}
@@ -185,7 +223,12 @@ export default function LockerPage() {
               {authenticated && address ? (
                 <Mono className="block truncate text-sm text-text">{shortAddress(address)}</Mono>
               ) : (
-                <div className="text-sm text-text-dim">Sign in, wallet appears. No seed phrase.</div>
+                <div>
+                  <div className="text-sm text-text-dim">Sign in, wallet appears. No seed phrase.</div>
+                  <div className="mt-0.5 text-xs text-text-muted">
+                    One code, then you are in for 30 days.
+                  </div>
+                </div>
               )}
             </div>
           </div>
@@ -247,7 +290,16 @@ export default function LockerPage() {
         </div>
         <div className="grid grid-cols-2 gap-2">
           {COSMETICS.map((c) => (
-            <CosmeticCard key={c.name} c={c} />
+            <CosmeticCard
+              key={c.name}
+              c={c}
+              equipped={c.kind === "voice" && c.persona === persona}
+              onEquip={
+                c.kind === "voice" && c.persona && c.unlocked
+                  ? () => equipVoice(c.persona!)
+                  : undefined
+              }
+            />
           ))}
         </div>
         <p className="mt-3 text-center text-xs text-text-muted">

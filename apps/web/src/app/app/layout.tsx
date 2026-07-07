@@ -10,7 +10,7 @@ import { KickAuthProvider, useKickUser } from "@/lib/auth";
 
 const NAV = [
   { key: "pitch", label: "PITCH", icon: Home, href: "/app" },
-  { key: "terrace", label: "TERRACE", icon: Ticket, href: "/app/terrace/QPR7" },
+  { key: "terrace", label: "TERRACE", icon: Ticket, href: "/app/terrace" },
   { key: "table", label: "TABLE", icon: Trophy, href: "/app/table" },
   { key: "locker", label: "LOCKER", icon: Shirt, href: "/app/locker" },
 ];
@@ -18,7 +18,9 @@ const NAV = [
 function activeKey(pathname: string) {
   if (pathname.startsWith("/app/terrace")) return "terrace";
   if (pathname.startsWith("/app/table")) return "table";
+  if (pathname.startsWith("/app/season")) return "table"; // season review lives under the TABLE tab
   if (pathname.startsWith("/app/locker")) return "locker";
+  if (pathname.startsWith("/app/match")) return "pitch"; // post-match detail is reached from the lobby
   return "pitch";
 }
 
